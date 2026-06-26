@@ -1,6 +1,6 @@
 from pathlib import Path
 
-OUT = Path("C:/ornitho-monitor/output")
+OUT = Path("output")
 OUT.mkdir(exist_ok=True)
 
 TARGETS = [
