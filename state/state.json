@@ -1,4 +1,29 @@
 {
-  "schema_version": 1,
-  "monitors": {}
+  "monitors": {
+    "default": {
+      "targets": {
+        "HB-HB": {
+          "seen_record_keys": [
+            "0b302bb86448a15579cce70fc00b4b6cc32111b5b0bcb6b324433802ed8544d2"
+          ]
+        },
+        "NI-DH": {
+          "seen_record_keys": []
+        },
+        "NI-OHZ": {
+          "seen_record_keys": []
+        },
+        "NI-OL": {
+          "seen_record_keys": []
+        },
+        "NI-OL*": {
+          "seen_record_keys": []
+        },
+        "NI-VER": {
+          "seen_record_keys": []
+        }
+      }
+    }
+  },
+  "schema_version": 1
 }
