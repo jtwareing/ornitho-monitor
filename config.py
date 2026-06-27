@@ -4,6 +4,7 @@ from pathlib import Path
 
 OUT = Path("output")
 OUT.mkdir(exist_ok=True)
+STATE_PATH = Path("state/state.json")
 
 TARGETS = [
     ("NI", "OHZ"),

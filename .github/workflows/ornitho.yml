@@ -13,6 +13,13 @@ on:
     - cron: "0 18 * * *"
     - cron: "0 19 * * *"
 
+permissions:
+  contents: write
+
+concurrency:
+  group: ornitho-monitor-state
+  cancel-in-progress: false
+
 jobs:
   ornitho:
     runs-on: ubuntu-latest
@@ -60,7 +67,16 @@ jobs:
 
       - name: Create output directory
         if: ${{ github.event_name == 'workflow_dispatch' || steps.berlin_time.outputs.run_monitor == 'true' }}
-        run: mkdir -p output
+        run: mkdir -p output state
+
+      - name: Show state status
+        if: ${{ github.event_name == 'workflow_dispatch' || steps.berlin_time.outputs.run_monitor == 'true' }}
+        run: |
+          if [ -f state/state.json ]; then
+            echo "State file present."
+          else
+            echo "State file missing."
+          fi
 
       - name: Run Ornitho monitor
         if: ${{ github.event_name == 'workflow_dispatch' || steps.berlin_time.outputs.run_monitor == 'true' }}
@@ -79,6 +95,19 @@ jobs:
           print(f"EMAIL_PASSWORD configured: {bool(os.environ.get('EMAIL_PASSWORD'))}")
           PY
           xvfb-run python -m ornitho.main
+
+      - name: Commit updated state
+        if: ${{ success() && (github.event_name != 'workflow_dispatch' || inputs.dry_run == false) && (github.event_name == 'workflow_dispatch' || steps.berlin_time.outputs.run_monitor == 'true') }}
+        run: |
+          if git diff --quiet -- state/state.json; then
+            echo "State unchanged; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/state.json
+          git commit -m "Update Ornitho state"
+          git push
 
       - name: Upload report
         uses: actions/upload-artifact@v4

@@ -1,23 +1,24 @@
 from playwright.sync_api import sync_playwright
 
-from config import OUT, MONITORS, ATTEMPTS, WAIT_SECONDS, HEADLESS, DRY_RUN
+from config import OUT, MONITORS, ATTEMPTS, WAIT_SECONDS, HEADLESS, DRY_RUN, STATE_PATH
 from emailer import send_email
 from ornitho.report import build_report
 from ornitho.scraper import check_target_with_retry
+from ornitho.state import compare_current_records, load_state, save_state, update_state
 
 
-def run_monitor(browser, monitor):
+def run_monitor(browser, monitor, state, persist_state=True):
     all_results = []
     errors = []
 
-    for state, district in monitor.targets:
-        label = f"{state}-{district}"
+    for state_code, district in monitor.targets:
+        label = f"{state_code}-{district}"
         print(f"Checking {label}...")
 
         try:
             records = check_target_with_retry(
                 browser,
-                state,
+                state_code,
                 district,
                 attempts=ATTEMPTS,
                 wait_seconds=WAIT_SECONDS,
@@ -27,6 +28,17 @@ def run_monitor(browser, monitor):
         except Exception as e:
             errors.append((label, type(e).__name__, str(e)))
             print(f"  Error after retries: {type(e).__name__}: {e}")
+
+    new_results = compare_current_records(state, monitor.name, all_results)
+    new_count = sum(len(records) for _, records in new_results)
+    print(f"New records since previous state for monitor '{monitor.name}': {new_count}")
+
+    updated_state = update_state(state, monitor.name, all_results)
+    if persist_state:
+        save_state(updated_state, STATE_PATH)
+        print(f"State saved to {STATE_PATH}.")
+    else:
+        print("DRY_RUN enabled; state not saved.")
 
     report = build_report(all_results, errors)
     OUT.joinpath("multi_report.txt").write_text(report, encoding="utf-8")
@@ -38,14 +50,19 @@ def run_monitor(browser, monitor):
     if not DRY_RUN:
         print("Email sent.")
 
+    return updated_state
+
 
 def run():
+    state = load_state(STATE_PATH)
+    print(f"State loaded from {STATE_PATH}.")
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=HEADLESS)
 
         try:
             for monitor in MONITORS:
-                run_monitor(browser, monitor)
+                state = run_monitor(browser, monitor, state, persist_state=not DRY_RUN)
         finally:
             browser.close()
 

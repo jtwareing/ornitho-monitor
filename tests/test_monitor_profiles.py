@@ -43,6 +43,7 @@ class MonitorProfileTests(unittest.TestCase):
         install_dependency_stubs()
         import config
         import ornitho.main as main
+        from ornitho.state import empty_state
 
         seen_targets = []
         sent = []
@@ -70,7 +71,7 @@ class MonitorProfileTests(unittest.TestCase):
                     email_to="profile@example.test",
                     targets=[("HB", "HB")],
                 )
-                main.run_monitor(object(), monitor)
+                main.run_monitor(object(), monitor, empty_state(), persist_state=False)
 
                 report = Path(tmpdir, "multi_report.txt").read_text(encoding="utf-8")
             finally:
@@ -84,6 +85,60 @@ class MonitorProfileTests(unittest.TestCase):
         self.assertEqual(len(sent), 1)
         self.assertTrue(sent[0][1])
         self.assertEqual(sent[0][2], "profile@example.test")
+
+    def test_run_monitor_saves_state_when_persistence_is_enabled(self):
+        install_dependency_stubs()
+        import config
+        import ornitho.main as main
+        from ornitho.state import empty_state, load_state
+
+        record = {
+            "date": "Saturday, June 27th, 2026",
+            "location": "Test Marsh",
+            "count": "1",
+            "species": "Test Bird",
+            "scientific": "Avis testus",
+            "detail": "",
+        }
+
+        def fake_check_target_with_retry(browser, state, district, attempts, wait_seconds):
+            return [record]
+
+        def fake_send_email(report, dry_run=False, email_to=None):
+            return None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_out = main.OUT
+            original_state_path = main.STATE_PATH
+            original_dry_run = main.DRY_RUN
+            original_check = main.check_target_with_retry
+            original_send = main.send_email
+            try:
+                state_path = Path(tmpdir, "state.json")
+                main.OUT = Path(tmpdir)
+                main.STATE_PATH = state_path
+                main.DRY_RUN = True
+                main.check_target_with_retry = fake_check_target_with_retry
+                main.send_email = fake_send_email
+
+                monitor = config.Monitor(
+                    name="test",
+                    email_to="profile@example.test",
+                    targets=[("HB", "HB")],
+                )
+                main.run_monitor(object(), monitor, empty_state(), persist_state=True)
+                saved_state = load_state(state_path)
+            finally:
+                main.OUT = original_out
+                main.STATE_PATH = original_state_path
+                main.DRY_RUN = original_dry_run
+                main.check_target_with_retry = original_check
+                main.send_email = original_send
+
+        self.assertEqual(
+            len(saved_state["monitors"]["test"]["targets"]["HB-HB"]["seen_record_keys"]),
+            1,
+        )
 
     def test_explicit_none_recipient_does_not_fall_back_to_global_email_to(self):
         os.environ["EMAIL_FROM"] = "from@example.test"
