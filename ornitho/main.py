@@ -1,3 +1,5 @@
+import argparse
+
 from playwright.sync_api import sync_playwright
 
 from config import OUT, MONITORS, ATTEMPTS, WAIT_SECONDS, HEADLESS, DRY_RUN, STATE_PATH
@@ -6,8 +8,15 @@ from ornitho.report import build_report
 from ornitho.scraper import check_target_with_retry
 from ornitho.state import compare_current_records, load_state, save_state, update_state
 
+DAILY_MODE = "daily"
+NOTIFY_MODE = "notify"
 
-def run_monitor(browser, monitor, state, persist_state=True):
+
+def should_send_report(mode, new_count):
+    return mode == DAILY_MODE or new_count > 0
+
+
+def run_monitor(browser, monitor, state, mode=DAILY_MODE, persist_state=True):
     all_results = []
     errors = []
 
@@ -34,38 +43,56 @@ def run_monitor(browser, monitor, state, persist_state=True):
     print(f"New records since previous state for monitor '{monitor.name}': {new_count}")
 
     updated_state = update_state(state, monitor.name, all_results)
-    if persist_state:
-        save_state(updated_state, STATE_PATH)
-        print(f"State saved to {STATE_PATH}.")
-    else:
-        print("DRY_RUN enabled; state not saved.")
+    report_results = new_results if mode == NOTIFY_MODE else all_results
 
-    report = build_report(all_results, errors)
+    report = build_report(report_results, errors)
     OUT.joinpath("multi_report.txt").write_text(report, encoding="utf-8")
 
     print()
     print(report)
 
-    send_email(report, dry_run=DRY_RUN, email_to=monitor.email_to)
-    if not DRY_RUN:
-        print("Email sent.")
+    if should_send_report(mode, new_count):
+        send_email(report, dry_run=DRY_RUN, email_to=monitor.email_to)
+        if not DRY_RUN:
+            print("Email sent.")
+    else:
+        print(f"No new records for monitor '{monitor.name}'; notification email not sent.")
 
-    return updated_state
+    if persist_state:
+        save_state(updated_state, STATE_PATH)
+        print(f"State saved to {STATE_PATH}.")
+        return updated_state
+
+    print("DRY_RUN enabled; state not saved.")
+    return state
 
 
-def run():
+def run(mode=DAILY_MODE):
     state = load_state(STATE_PATH)
     print(f"State loaded from {STATE_PATH}.")
+    print(f"Mode: {mode}")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=HEADLESS)
 
         try:
             for monitor in MONITORS:
-                state = run_monitor(browser, monitor, state, persist_state=not DRY_RUN)
+                state = run_monitor(browser, monitor, state, mode=mode, persist_state=not DRY_RUN)
         finally:
             browser.close()
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--mode",
+        choices=(DAILY_MODE, NOTIFY_MODE),
+        default=DAILY_MODE,
+        help="daily sends the full report; notify sends only genuinely new records.",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    run()
+    args = parse_args()
+    run(mode=args.mode)
