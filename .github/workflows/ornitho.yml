@@ -2,9 +2,16 @@ name: Ornitho Daily Monitor
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Scrape and print the email without sending it"
+        required: true
+        default: "false"
+        type: boolean
 
   schedule:
-    - cron: "37 17 * * *"
+    - cron: "0 18 * * *"
+    - cron: "0 19 * * *"
 
 jobs:
   ornitho:
@@ -14,33 +21,63 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Show run context
+        run: |
+          echo "Branch: ${GITHUB_REF_NAME}"
+          echo "Event: ${GITHUB_EVENT_NAME}"
+          echo "Commit: ${GITHUB_SHA}"
+          echo "Berlin time: $(TZ=Europe/Berlin date '+%Y-%m-%d %H:%M:%S %Z')"
+          echo "UTC time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+      - name: Check Berlin schedule window
+        id: berlin_time
+        run: |
+          berlin_hour="$(TZ=Europe/Berlin date '+%H')"
+          if [ "${berlin_hour}" = "20" ]; then
+            echo "run_monitor=true" >> "${GITHUB_OUTPUT}"
+            echo "Schedule window: run monitor"
+          else
+            echo "run_monitor=false" >> "${GITHUB_OUTPUT}"
+            echo "Schedule window: skip monitor because Berlin hour is ${berlin_hour}, not 20"
+          fi
+
       - name: Set up Python
+        if: ${{ github.event_name == 'workflow_dispatch' || steps.berlin_time.outputs.run_monitor == 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install Python packages
+        if: ${{ github.event_name == 'workflow_dispatch' || steps.berlin_time.outputs.run_monitor == 'true' }}
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install Playwright
+      - name: Install Playwright and browser dependencies
+        if: ${{ github.event_name == 'workflow_dispatch' || steps.berlin_time.outputs.run_monitor == 'true' }}
         run: |
-          python -m playwright install chromium
-
-      - name: Install Linux dependencies
-        run: |
-          python -m playwright install-deps chromium
+          python -m playwright install --with-deps chromium
 
       - name: Create output directory
+        if: ${{ github.event_name == 'workflow_dispatch' || steps.berlin_time.outputs.run_monitor == 'true' }}
         run: mkdir -p output
 
       - name: Run Ornitho monitor
+        if: ${{ github.event_name == 'workflow_dispatch' || steps.berlin_time.outputs.run_monitor == 'true' }}
         env:
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'False' }}
         run: |
+          echo "dry_run=${DRY_RUN}"
+          echo "Python command: xvfb-run python -m ornitho.main"
+          python - <<'PY'
+          import os
+          print(f"EMAIL_FROM configured: {bool(os.environ.get('EMAIL_FROM'))}")
+          print(f"EMAIL_TO configured: {bool(os.environ.get('EMAIL_TO'))}")
+          print(f"EMAIL_PASSWORD configured: {bool(os.environ.get('EMAIL_PASSWORD'))}")
+          PY
           xvfb-run python -m ornitho.main
 
       - name: Upload report

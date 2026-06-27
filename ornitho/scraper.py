@@ -1,37 +1,108 @@
+import time
+import re
+
 from bs4 import BeautifulSoup
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from config import OUT
 from ornitho.parser import parse_records
+
+ORNITHO_URL = "https://www.ornitho.de/"
+PAGE_TIMEOUT = 20000
+NAVIGATION_TIMEOUT = 45000
+INTERACTIVE_SELECTOR = "a, button, [role=button], [onclick]"
 
 
 def safe_filename(text):
     return text.replace("*", "star").replace("/", "_")
 
 
-def click_no_wait(locator, timeout=15000):
+def settle_page(page, timeout=10000):
+    try:
+        page.wait_for_load_state("domcontentloaded", timeout=timeout)
+    except PlaywrightTimeoutError:
+        pass
+
+    try:
+        page.wait_for_load_state("networkidle", timeout=timeout)
+    except PlaywrightTimeoutError:
+        pass
+
+
+def click_no_wait(page, locator, timeout=PAGE_TIMEOUT, settle_ms=1000):
+    locator.wait_for(state="visible", timeout=timeout)
     locator.click(timeout=timeout, no_wait_after=True)
+    settle_page(page)
+    if settle_ms:
+        page.wait_for_timeout(settle_ms)
+
+
+def exact_text_pattern(text):
+    return re.compile(rf"^\s*{re.escape(text)}\s*$")
+
+
+def choose_below_reference(reference_box, candidate_boxes):
+    if not reference_box:
+        return None
+
+    reference_y = reference_box["y"]
+    below = [
+        (index, box)
+        for index, box in enumerate(candidate_boxes)
+        if box and box["y"] > reference_y
+    ]
+    if not below:
+        return None
+
+    return min(below, key=lambda item: item[1]["y"])[0]
+
+
+def district_locator(page, district, state_locator):
+    candidates = page.locator(
+        INTERACTIVE_SELECTOR,
+        has_text=exact_text_pattern(district),
+    )
+    count = candidates.count()
+
+    if count == 1:
+        return candidates.first
+
+    if count > 1:
+        reference_box = state_locator.bounding_box(timeout=PAGE_TIMEOUT)
+        candidate_boxes = [
+            candidates.nth(index).bounding_box(timeout=PAGE_TIMEOUT)
+            for index in range(count)
+        ]
+        index = choose_below_reference(reference_box, candidate_boxes)
+        if index is not None:
+            return candidates.nth(index)
+
+    fallback = page.get_by_text(district, exact=True)
+    if fallback.count() == 1:
+        return fallback.first
+
+    raise RuntimeError(f"Could not uniquely identify district selector for {district}")
 
 
 def check_target(browser, state, district):
-    page = browser.new_page()
-    page.set_default_timeout(15000)
+    context = browser.new_context()
+    page = context.new_page()
+    page.set_default_timeout(PAGE_TIMEOUT)
+    page.set_default_navigation_timeout(NAVIGATION_TIMEOUT)
 
     try:
-        page.goto("https://www.ornitho.de/", wait_until="domcontentloaded", timeout=30000)
-        click_no_wait(page.get_by_role("emphasis").nth(1))
-        page.wait_for_timeout(1000)
+        page.goto(ORNITHO_URL, wait_until="domcontentloaded", timeout=NAVIGATION_TIMEOUT)
+        settle_page(page)
 
-        click_no_wait(page.get_by_text("Current observations"))
-        page.wait_for_timeout(5000)
+        click_no_wait(page, page.get_by_role("emphasis").nth(1))
+        click_no_wait(page, page.get_by_text("Current observations"), settle_ms=3000)
 
-        click_no_wait(page.get_by_role("link", name=state, exact=True))
-        page.wait_for_timeout(2000)
+        state_locator = page.get_by_role("link", name=state, exact=True).first
+        click_no_wait(page, state_locator)
+        click_no_wait(page, district_locator(page, district, state_locator))
+        click_no_wait(page, page.get_by_text("rare", exact=True), settle_ms=3000)
 
-        click_no_wait(page.get_by_text(district, exact=True))
-        page.wait_for_timeout(2000)
-
-        click_no_wait(page.get_by_text("rare", exact=True))
-        page.wait_for_timeout(5000)
+        page.wait_for_selector("body", state="attached", timeout=PAGE_TIMEOUT)
 
         html = page.content()
         text = BeautifulSoup(html, "lxml").get_text("\n", strip=True)
@@ -44,7 +115,7 @@ def check_target(browser, state, district):
         return parse_records(text)
 
     finally:
-        page.close()
+        context.close()
 
 
 def check_target_with_retry(browser, state, district, attempts, wait_seconds):
@@ -54,9 +125,7 @@ def check_target_with_retry(browser, state, district, attempts, wait_seconds):
         try:
             if attempt > 1:
                 print(f"  Waiting {wait_seconds} seconds before retry {attempt}...")
-                wait_page = browser.new_page()
-                wait_page.wait_for_timeout(wait_seconds * 1000)
-                wait_page.close()
+                time.sleep(wait_seconds)
                 print(f"  Retry attempt {attempt}...")
 
             return check_target(browser, state, district)

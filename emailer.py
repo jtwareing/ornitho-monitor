@@ -3,10 +3,31 @@ from email.message import EmailMessage
 import os
 import smtplib
 
+DEFAULT_EMAIL_TO = object()
 
-def send_email(report):
+
+def build_subject():
+    today = date.today().isoformat()
+    return f"Ornitho Daily Report - {today}"
+
+
+def send_email(report, dry_run=False, email_to=DEFAULT_EMAIL_TO):
+    subject = build_subject()
+    print("Reached email step.")
+
+    if dry_run:
+        print("DRY_RUN enabled; email not sent.")
+        print()
+        print("Email subject:")
+        print(subject)
+        print()
+        print("Email body:")
+        print(report)
+        return
+
     email_from = os.environ.get("EMAIL_FROM")
-    email_to = os.environ.get("EMAIL_TO")
+    if email_to is DEFAULT_EMAIL_TO:
+        email_to = os.environ.get("EMAIL_TO")
     email_password = os.environ.get("EMAIL_PASSWORD")
 
     missing = [
@@ -21,10 +42,9 @@ def send_email(report):
     if missing:
         raise RuntimeError(f"Missing email environment variables: {', '.join(missing)}")
 
-    today = date.today().isoformat()
-
+    print("Sending email via Gmail SMTP.")
     msg = EmailMessage()
-    msg["Subject"] = f"Ornitho Daily Report - {today}"
+    msg["Subject"] = subject
     msg["From"] = email_from
     msg["To"] = email_to
     msg.set_content(report)
