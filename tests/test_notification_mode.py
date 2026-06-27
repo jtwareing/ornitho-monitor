@@ -105,6 +105,7 @@ class NotificationModeTests(unittest.TestCase):
         self.assertIn("NEW RARE BIRDS", sent[0][0])
         self.assertIn("HB-HB", sent[0][0])
         self.assertIn("Test Bird (Avis testus)", sent[0][0])
+        self.assertIn("1 - Test Marsh", sent[0][0])
         self.assertIn("Test Bird (Avis testus)", report)
         self.assertIn("test", updated_state["monitors"])
 

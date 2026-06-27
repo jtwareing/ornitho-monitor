@@ -52,7 +52,7 @@ def build_notification_report(new_results, errors):
 
         for record in records:
             report_lines.append(f"{record['species']} ({record['scientific']})")
-            report_lines.append(f"{record['count']} — {record['location']}")
+            report_lines.append(f"{record['count']} - {record['location']}")
             report_lines.append(record["date"])
             if record["detail"]:
                 report_lines.append(f"Detail: {record['detail']}")
