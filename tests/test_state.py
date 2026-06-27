@@ -10,6 +10,7 @@ from ornitho.state import (
     record_key,
     save_state,
     update_state,
+    validate_state,
 )
 
 
@@ -75,6 +76,39 @@ class StateTests(unittest.TestCase):
         }
 
         self.assertEqual(record_key(record), record_key(reordered))
+
+    def test_save_state_replaces_existing_file_atomically(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir, "state.json")
+            path.write_text("previous", encoding="utf-8")
+            state = update_state(empty_state(), "default", [("HB-HB", [sample_record()])])
+
+            save_state(state, path)
+
+            self.assertEqual(load_state(path), state)
+            self.assertFalse(list(Path(tmpdir).glob("tmp*")))
+
+    def test_validate_state_rejects_unknown_schema_version(self):
+        with self.assertRaisesRegex(RuntimeError, "Unsupported state schema version"):
+            validate_state({"schema_version": 999, "monitors": {}})
+
+    def test_validate_state_normalizes_duplicate_seen_keys(self):
+        state = {
+            "schema_version": 1,
+            "monitors": {
+                "default": {
+                    "targets": {
+                        "HB-HB": {
+                            "seen_record_keys": ["b", "a", "b"],
+                        },
+                    },
+                },
+            },
+        }
+
+        normalized = validate_state(state)
+
+        self.assertEqual(normalized["monitors"]["default"]["targets"]["HB-HB"]["seen_record_keys"], ["a", "b"])
 
 
 if __name__ == "__main__":

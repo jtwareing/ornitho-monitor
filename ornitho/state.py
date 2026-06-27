@@ -1,6 +1,8 @@
 import copy
 import hashlib
 import json
+import os
+import tempfile
 
 from config import STATE_PATH
 
@@ -24,19 +26,61 @@ def load_state(path=STATE_PATH):
     with path.open("r", encoding="utf-8") as state_file:
         state = json.load(state_file)
 
-    if state.get("schema_version") != SCHEMA_VERSION:
-        raise RuntimeError(f"Unsupported state schema version: {state.get('schema_version')}")
-
-    state.setdefault("monitors", {})
-    return state
+    return validate_state(state)
 
 
 def save_state(state, path=STATE_PATH):
-    """Persist state as stable, human-readable JSON."""
+    """Persist state as stable, human-readable JSON using an atomic replace."""
+    state = validate_state(copy.deepcopy(state))
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as state_file:
+
+    temp_name = None
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        delete=False,
+    ) as state_file:
+        temp_name = state_file.name
         json.dump(state, state_file, indent=2, sort_keys=True)
         state_file.write("\n")
+        state_file.flush()
+        os.fsync(state_file.fileno())
+
+    os.replace(temp_name, path)
+
+
+def validate_state(state):
+    """Validate and normalize the current state schema."""
+    if not isinstance(state, dict):
+        raise RuntimeError("State file must contain a JSON object")
+
+    if state.get("schema_version") != SCHEMA_VERSION:
+        raise RuntimeError(f"Unsupported state schema version: {state.get('schema_version')}")
+
+    monitors = state.setdefault("monitors", {})
+    if not isinstance(monitors, dict):
+        raise RuntimeError("State monitors must be an object")
+
+    for monitor_name, monitor_state in monitors.items():
+        if not isinstance(monitor_state, dict):
+            raise RuntimeError(f"State monitor {monitor_name} must be an object")
+
+        targets = monitor_state.setdefault("targets", {})
+        if not isinstance(targets, dict):
+            raise RuntimeError(f"State monitor {monitor_name} targets must be an object")
+
+        for label, state_bucket in targets.items():
+            if not isinstance(state_bucket, dict):
+                raise RuntimeError(f"State target {monitor_name}/{label} must be an object")
+
+            seen = state_bucket.setdefault("seen_record_keys", [])
+            if not isinstance(seen, list) or not all(isinstance(key, str) for key in seen):
+                raise RuntimeError(f"State target {monitor_name}/{label} seen_record_keys must be a list of strings")
+
+            state_bucket["seen_record_keys"] = sorted(set(seen))
+
+    return state
 
 
 def record_key(record):
