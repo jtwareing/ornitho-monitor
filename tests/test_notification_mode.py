@@ -43,8 +43,8 @@ class NotificationModeTests(unittest.TestCase):
         def fake_check_target_with_retry(browser, state, district, attempts, wait_seconds):
             return records
 
-        def fake_send_email(report, dry_run=False, email_to=None):
-            sent.append((report, dry_run, email_to))
+        def fake_send_email(report, dry_run=False, email_to=None, subject=None):
+            sent.append((report, dry_run, email_to, subject))
 
         with tempfile.TemporaryDirectory() as tmpdir:
             original_out = main.OUT
@@ -90,7 +90,7 @@ class NotificationModeTests(unittest.TestCase):
         updated_state, sent, report = self.run_notify_monitor(state, [record])
 
         self.assertEqual(sent, [])
-        self.assertIn("No rare records today.", report)
+        self.assertIn("No new rare records.", report)
         self.assertEqual(updated_state, state)
 
     def test_one_new_record_sends_one_notification(self):
@@ -101,6 +101,9 @@ class NotificationModeTests(unittest.TestCase):
         updated_state, sent, report = self.run_notify_monitor(empty_state(), [record])
 
         self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0][3], "Ornitho Rare Bird Notification")
+        self.assertIn("NEW RARE BIRDS", sent[0][0])
+        self.assertIn("HB-HB", sent[0][0])
         self.assertIn("Test Bird (Avis testus)", sent[0][0])
         self.assertIn("Test Bird (Avis testus)", report)
         self.assertIn("test", updated_state["monitors"])
@@ -115,7 +118,7 @@ class NotificationModeTests(unittest.TestCase):
 
         self.assertEqual(len(first_sent), 1)
         self.assertEqual(second_sent, [])
-        self.assertIn("No rare records today.", second_report)
+        self.assertIn("No new rare records.", second_report)
 
     def test_monitor_histories_remain_independent(self):
         from ornitho.state import empty_state, update_state

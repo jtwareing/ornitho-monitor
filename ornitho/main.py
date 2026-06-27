@@ -4,12 +4,13 @@ from playwright.sync_api import sync_playwright
 
 from config import OUT, MONITORS, ATTEMPTS, WAIT_SECONDS, HEADLESS, DRY_RUN, STATE_PATH
 from emailer import send_email
-from ornitho.report import build_report
+from ornitho.report import build_notification_report, build_report
 from ornitho.scraper import check_target_with_retry
 from ornitho.state import compare_current_records, load_state, save_state, update_state
 
 DAILY_MODE = "daily"
 NOTIFY_MODE = "notify"
+NOTIFICATION_SUBJECT = "Ornitho Rare Bird Notification"
 
 
 def should_send_report(mode, new_count):
@@ -45,14 +46,18 @@ def run_monitor(browser, monitor, state, mode=DAILY_MODE, persist_state=True):
     updated_state = update_state(state, monitor.name, all_results)
     report_results = new_results if mode == NOTIFY_MODE else all_results
 
-    report = build_report(report_results, errors)
+    if mode == NOTIFY_MODE:
+        report = build_notification_report(report_results, errors)
+    else:
+        report = build_report(report_results, errors)
     OUT.joinpath("multi_report.txt").write_text(report, encoding="utf-8")
 
     print()
     print(report)
 
     if should_send_report(mode, new_count):
-        send_email(report, dry_run=DRY_RUN, email_to=monitor.email_to)
+        subject = NOTIFICATION_SUBJECT if mode == NOTIFY_MODE else None
+        send_email(report, dry_run=DRY_RUN, email_to=monitor.email_to, subject=subject)
         if not DRY_RUN:
             print("Email sent.")
     else:

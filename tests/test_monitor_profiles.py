@@ -52,7 +52,7 @@ class MonitorProfileTests(unittest.TestCase):
             seen_targets.append((state, district))
             return []
 
-        def fake_send_email(report, dry_run=False, email_to=None):
+        def fake_send_email(report, dry_run=False, email_to=None, subject=None):
             sent.append((report, dry_run, email_to))
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -104,7 +104,7 @@ class MonitorProfileTests(unittest.TestCase):
         def fake_check_target_with_retry(browser, state, district, attempts, wait_seconds):
             return [record]
 
-        def fake_send_email(report, dry_run=False, email_to=None):
+        def fake_send_email(report, dry_run=False, email_to=None, subject=None):
             return None
 
         with tempfile.TemporaryDirectory() as tmpdir:

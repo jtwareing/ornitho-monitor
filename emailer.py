@@ -11,8 +11,8 @@ def build_subject():
     return f"Ornitho Daily Report - {today}"
 
 
-def send_email(report, dry_run=False, email_to=DEFAULT_EMAIL_TO):
-    subject = build_subject()
+def send_email(report, dry_run=False, email_to=DEFAULT_EMAIL_TO, subject=None):
+    subject = subject or build_subject()
     print("Reached email step.")
 
     if dry_run:
