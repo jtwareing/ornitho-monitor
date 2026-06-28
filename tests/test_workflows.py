@@ -30,6 +30,15 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('cron: "17 * * * *"', hourly)
         self.assertNotIn('cron: "0 * * * *"', hourly)
 
+    def test_daily_schedule_runs_around_berlin_8pm_off_top_of_hour(self):
+        daily = self.workflow_text("ornitho.yml")
+
+        self.assertIn('cron: "17 18 * * *"', daily)
+        self.assertIn('cron: "17 19 * * *"', daily)
+        self.assertNotIn('cron: "0 18 * * *"', daily)
+        self.assertNotIn('cron: "0 19 * * *"', daily)
+        self.assertIn('if [ "${berlin_hour}" = "20" ]; then', daily)
+
     def test_daily_workflow_still_uses_daily_mode_entrypoint(self):
         daily = self.workflow_text("ornitho.yml")
 
