@@ -113,7 +113,7 @@ Ornitho Daily Monitor
 
 Ornitho Hourly Notifications
 - file: .github/workflows/ornitho-notify.yml
-- runs hourly
+- runs hourly, currently at minute 17 to avoid GitHub Actions top-of-hour schedule congestion
 - uses Notification mode
 - supports manual dry-run
 - commits state only after successful non-dry-run runs
