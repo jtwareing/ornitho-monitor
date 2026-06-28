@@ -4,7 +4,8 @@
       "targets": {
         "HB-HB": {
           "seen_record_keys": [
-            "0b302bb86448a15579cce70fc00b4b6cc32111b5b0bcb6b324433802ed8544d2"
+            "0b302bb86448a15579cce70fc00b4b6cc32111b5b0bcb6b324433802ed8544d2",
+            "caccfba9517a3ad1f4c05c575138d961ea79c620e8279e758b284d592538558a"
           ]
         },
         "NI-DH": {
