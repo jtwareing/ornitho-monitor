@@ -10,7 +10,7 @@ on:
         type: boolean
 
   schedule:
-    - cron: "17 * * * *"
+    - cron: "23 * * * *"
 
 permissions:
   contents: write

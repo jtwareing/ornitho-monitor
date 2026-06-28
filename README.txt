@@ -106,14 +106,14 @@ Workflow logs should make state commit failures visible.
 GitHub workflows
 Ornitho Daily Monitor
 - file: .github/workflows/ornitho.yml
-- runs once per day around 20:17 Berlin time
+- runs once per day around 20:23 Berlin time
 - uses Daily Summary mode
 - supports manual dry-run
 - commits state only after successful non-dry-run runs
 
 Ornitho Hourly Notifications
 - file: .github/workflows/ornitho-notify.yml
-- runs hourly, currently at minute 17 to avoid GitHub Actions top-of-hour schedule congestion
+- runs hourly, currently at minute 23 to avoid GitHub Actions top-of-hour schedule congestion
 - uses Notification mode
 - supports manual dry-run
 - commits state only after successful non-dry-run runs

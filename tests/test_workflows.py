@@ -27,14 +27,14 @@ class WorkflowTests(unittest.TestCase):
     def test_hourly_schedule_avoids_top_of_hour(self):
         hourly = self.workflow_text("ornitho-notify.yml")
 
-        self.assertIn('cron: "17 * * * *"', hourly)
+        self.assertIn('cron: "23 * * * *"', hourly)
         self.assertNotIn('cron: "0 * * * *"', hourly)
 
     def test_daily_schedule_runs_around_berlin_8pm_off_top_of_hour(self):
         daily = self.workflow_text("ornitho.yml")
 
-        self.assertIn('cron: "17 18 * * *"', daily)
-        self.assertIn('cron: "17 19 * * *"', daily)
+        self.assertIn('cron: "23 18 * * *"', daily)
+        self.assertIn('cron: "23 19 * * *"', daily)
         self.assertNotIn('cron: "0 18 * * *"', daily)
         self.assertNotIn('cron: "0 19 * * *"', daily)
         self.assertIn('if [ "${berlin_hour}" = "20" ]; then', daily)
