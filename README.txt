@@ -113,7 +113,8 @@ Ornitho Daily Monitor
 
 Ornitho Hourly Notifications
 - file: .github/workflows/ornitho-notify.yml
-- runs hourly, currently at minute 23 to avoid GitHub Actions top-of-hour schedule congestion
+- dispatch-only workflow for Notification mode
+- production hourly triggering should be done by the external scheduler described below
 - uses Notification mode
 - supports manual dry-run
 - commits state only after successful non-dry-run runs
@@ -127,6 +128,92 @@ All workflows that can update state share the same concurrency group:
 ornitho-monitor-state
 
 This prevents two workflow runs from updating state at the same time.
+
+External hourly trigger
+GitHub native scheduled cron has not created hourly runs reliably for this repository.
+The hourly notification workflow is therefore intentionally dispatch-only.
+
+Recommended scheduler: Cloudflare Workers Cron Triggers.
+
+Why:
+- independent from GitHub's scheduled workflow system
+- low-maintenance managed scheduler
+- token can be stored as a Cloudflare Worker secret
+- the Worker only needs to call GitHub's workflow dispatch API
+
+GitHub workflow dispatch endpoint:
+POST https://api.github.com/repos/jtwareing/ornitho-monitor/actions/workflows/ornitho-notify.yml/dispatches
+
+Headers:
+Accept: application/vnd.github+json
+Authorization: Bearer <GITHUB_TOKEN>
+X-GitHub-Api-Version: 2022-11-28
+Content-Type: application/json
+
+Body for production hourly notifications:
+{
+  "ref": "main",
+  "inputs": {
+    "dry_run": "false"
+  }
+}
+
+Body for a safe external dry-run test:
+{
+  "ref": "main",
+  "inputs": {
+    "dry_run": "true"
+  }
+}
+
+GitHub token permissions:
+- use a fine-grained personal access token
+- repository access: jtwareing/ornitho-monitor only
+- repository permissions: Actions read/write
+- no Contents write permission is needed for dispatching; the workflow uses GITHUB_TOKEN for state commits
+
+Cloudflare Worker code:
+export default {
+  async scheduled(event, env, ctx) {
+    const response = await fetch(
+      "https://api.github.com/repos/jtwareing/ornitho-monitor/actions/workflows/ornitho-notify.yml/dispatches",
+      {
+        method: "POST",
+        headers: {
+          "Accept": "application/vnd.github+json",
+          "Authorization": `Bearer ${env.GITHUB_TOKEN}`,
+          "X-GitHub-Api-Version": "2022-11-28",
+          "Content-Type": "application/json",
+          "User-Agent": "ornitho-monitor-cloudflare-worker"
+        },
+        body: JSON.stringify({
+          ref: "main",
+          inputs: {
+            dry_run: "false"
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`GitHub workflow dispatch failed: ${response.status} ${await response.text()}`);
+    }
+  }
+};
+
+Cloudflare schedule expression:
+23 * * * *
+
+Cloudflare setup:
+1. Create a Worker.
+2. Add the Worker code above.
+3. Add a Worker secret named GITHUB_TOKEN containing the fine-grained GitHub token.
+4. Add a Cron Trigger with expression: 23 * * * *
+5. Deploy the Worker.
+6. Temporarily set dry_run to "true" in the Worker body and trigger/test it once.
+7. Confirm a GitHub Actions workflow_dispatch run appears for Ornitho Hourly Notifications.
+8. Inspect logs for Mode: notify and DRY_RUN enabled.
+9. Set dry_run back to "false" for production.
 
 Required GitHub secrets
 - EMAIL_FROM

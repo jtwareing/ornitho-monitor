@@ -24,11 +24,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("git diff --quiet -- state/state.json", hourly)
         self.assertIn("git push", hourly)
 
-    def test_hourly_schedule_avoids_top_of_hour(self):
+    def test_hourly_notifications_are_dispatch_only(self):
         hourly = self.workflow_text("ornitho-notify.yml")
 
-        self.assertIn('cron: "23 * * * *"', hourly)
-        self.assertNotIn('cron: "0 * * * *"', hourly)
+        self.assertIn("workflow_dispatch:", hourly)
+        self.assertNotIn("schedule:", hourly)
+        self.assertNotIn("cron:", hourly)
 
     def test_daily_schedule_runs_around_berlin_8pm_off_top_of_hour(self):
         daily = self.workflow_text("ornitho.yml")
