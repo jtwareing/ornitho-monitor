@@ -88,6 +88,7 @@ class DirectScraperTests(unittest.TestCase):
                 "species": "Caspian Tern",
                 "scientific": "Hydroprogne caspia",
                 "detail": "Detail feeding offshore",
+                "rarity": "",
             },
         )
 

@@ -46,6 +46,20 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("xvfb-run python -m ornitho.main", daily)
         self.assertNotIn("--mode notify", daily)
 
+    def test_direct_shadow_compare_is_manual_only_and_no_email_or_state(self):
+        shadow = self.workflow_text("ornitho-direct-shadow-compare.yml")
+
+        self.assertIn("workflow_dispatch:", shadow)
+        self.assertNotIn("schedule:", shadow)
+        self.assertNotIn("cron:", shadow)
+        self.assertIn("permissions:", shadow)
+        self.assertIn("contents: read", shadow)
+        self.assertIn("xvfb-run python -m ornitho.direct_shadow_run", shadow)
+        self.assertNotIn("ornitho.main", shadow)
+        self.assertNotIn("EMAIL_PASSWORD", shadow)
+        self.assertNotIn("git push", shadow)
+        self.assertNotIn("state/state.json", shadow)
+
 
 if __name__ == "__main__":
     unittest.main()

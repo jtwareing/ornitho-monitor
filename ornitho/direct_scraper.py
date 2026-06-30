@@ -207,6 +207,7 @@ def row_to_record(row: dict) -> dict[str, str]:
         "species": clean_text(species.get("name") or row.get("sighting_detail_short_raw") or ""),
         "scientific": clean_text(species.get("latin_name", "")),
         "detail": detail_from_row(row),
+        "rarity": clean_text(species.get("rarity", "")),
     }
 
 
