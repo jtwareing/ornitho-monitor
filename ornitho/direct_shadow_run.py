@@ -72,6 +72,7 @@ def write_text_report(path: Path, comparison: dict[str, object], summary: dict[s
         f"Categories: {', '.join(summary['categories'])}",
         f"Playwright attempts per target: {summary['playwright_attempts']}",
         f"Playwright wait seconds: {summary['playwright_wait_seconds']}",
+        f"Playwright headless: {summary['playwright_headless']}",
         f"Playwright runtime seconds: {summary['playwright_runtime_seconds']:.2f}",
         f"Direct runtime seconds: {summary['direct_runtime_seconds']:.2f}",
         f"Direct requests: {summary['direct_request_count']}",
@@ -113,6 +114,7 @@ def run_shadow_compare(
     categories: tuple[str, ...],
     playwright_attempts: int = 2,
     playwright_wait_seconds: int = 5,
+    playwright_headless: bool = False,
 ) -> dict[str, object]:
     output_dir.mkdir(parents=True, exist_ok=True)
     labels = [f"{state}-{district}" for state, district in TARGETS]
@@ -120,7 +122,7 @@ def run_shadow_compare(
     playwright_results: dict[str, object] = {}
     playwright_started = time.perf_counter()
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = playwright.chromium.launch(headless=playwright_headless)
         try:
             for state, district in TARGETS:
                 label = f"{state}-{district}"
@@ -213,6 +215,7 @@ def run_shadow_compare(
         "categories": list(categories),
         "playwright_attempts": playwright_attempts,
         "playwright_wait_seconds": playwright_wait_seconds,
+        "playwright_headless": playwright_headless,
         "playwright_runtime_seconds": playwright_runtime,
         "direct_runtime_seconds": direct_runtime,
         "direct_request_count": direct_request_count,
@@ -243,6 +246,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--playwright-attempts", type=int, default=2)
     parser.add_argument("--playwright-wait-seconds", type=int, default=5)
+    parser.add_argument("--playwright-headless", action="store_true")
     return parser.parse_args()
 
 
@@ -254,6 +258,7 @@ def main() -> None:
         categories,
         playwright_attempts=args.playwright_attempts,
         playwright_wait_seconds=args.playwright_wait_seconds,
+        playwright_headless=args.playwright_headless,
     )
     print(json.dumps(result["summary"], indent=2, ensure_ascii=False))
 
