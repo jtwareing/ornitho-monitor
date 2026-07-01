@@ -1,5 +1,21 @@
 {
   "monitors": {
+    "Simon": {
+      "targets": {
+        "BE-B": {
+          "seen_record_keys": []
+        },
+        "NI-AUR": {
+          "seen_record_keys": []
+        },
+        "NI-FRI": {
+          "seen_record_keys": []
+        },
+        "NI-WTM": {
+          "seen_record_keys": []
+        }
+      }
+    },
     "default": {
       "targets": {
         "HB-HB": {
