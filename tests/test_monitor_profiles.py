@@ -30,6 +30,7 @@ def install_dependency_stubs():
 class MonitorProfileTests(unittest.TestCase):
     def test_default_monitor_uses_email_to_and_current_targets(self):
         os.environ["EMAIL_TO"] = "birds@example.test"
+        os.environ.pop("SCRAPER_BACKEND", None)
         import config
 
         config = importlib.reload(config)
@@ -38,6 +39,7 @@ class MonitorProfileTests(unittest.TestCase):
         self.assertEqual(config.MONITORS[0].name, "default")
         self.assertEqual(config.MONITORS[0].email_to, "birds@example.test")
         self.assertEqual(config.MONITORS[0].targets, config.TARGETS)
+        self.assertEqual(config.SCRAPER_BACKEND, "playwright")
 
     def test_run_monitor_uses_monitor_targets_and_recipient(self):
         install_dependency_stubs()
@@ -139,6 +141,81 @@ class MonitorProfileTests(unittest.TestCase):
             len(saved_state["monitors"]["test"]["targets"]["HB-HB"]["seen_record_keys"]),
             1,
         )
+
+    def test_direct_backend_uses_direct_scraper_without_playwright_retry(self):
+        install_dependency_stubs()
+        import ornitho.main as main
+
+        records = [{"species": "Direct Bird"}]
+
+        class FakeResult:
+            class stats:
+                request_count = 1
+                pages_fetched = 1
+                records_parsed = 1
+                categories = ("rare",)
+
+            def __init__(self):
+                self.records = records
+
+        class FakeDirectScraper:
+            def __init__(self):
+                self.calls = []
+
+            def check_target(self, target, index_html=None, categories=()):
+                self.calls.append((target, index_html, categories))
+                return FakeResult()
+
+        def fail_check_target_with_retry(*_args, **_kwargs):
+            raise AssertionError("Playwright retry path should not be used")
+
+        original_check = main.check_target_with_retry
+        try:
+            main.check_target_with_retry = fail_check_target_with_retry
+            scraper = FakeDirectScraper()
+            result = main.check_target_records(
+                None,
+                scraper,
+                "<html></html>",
+                "HB",
+                "HB",
+                backend=main.DIRECT_BACKEND,
+            )
+        finally:
+            main.check_target_with_retry = original_check
+
+        self.assertEqual(result, records)
+        self.assertEqual(scraper.calls[0][0], ("HB", "HB"))
+
+    def test_direct_with_fallback_uses_playwright_when_direct_fails(self):
+        install_dependency_stubs()
+        import ornitho.main as main
+
+        fallback_records = [{"species": "Fallback Bird"}]
+
+        class FailingDirectScraper:
+            def check_target(self, *_args, **_kwargs):
+                raise RuntimeError("direct unavailable")
+
+        def fake_check_target_with_retry(browser, state, district, attempts, wait_seconds):
+            self.assertEqual((state, district), ("HB", "HB"))
+            return fallback_records
+
+        original_check = main.check_target_with_retry
+        try:
+            main.check_target_with_retry = fake_check_target_with_retry
+            result = main.check_target_records(
+                object(),
+                FailingDirectScraper(),
+                "<html></html>",
+                "HB",
+                "HB",
+                backend=main.DIRECT_WITH_FALLBACK_BACKEND,
+            )
+        finally:
+            main.check_target_with_retry = original_check
+
+        self.assertEqual(result, fallback_records)
 
     def test_explicit_none_recipient_does_not_fall_back_to_global_email_to(self):
         os.environ["EMAIL_FROM"] = "from@example.test"

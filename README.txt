@@ -6,6 +6,7 @@ This project monitors selected Ornitho regions with Playwright, extracts rare-bi
 The scraper is deliberately separate from reporting, email, and state handling:
 - ornitho/scraper.py navigates Ornitho and returns parsed records.
 - ornitho/parser.py converts page text into record dictionaries.
+- ornitho/direct_scraper.py can read Ornitho's JSON observation endpoint directly.
 - ornitho/report.py builds plain-text daily and notification reports.
 - ornitho/state.py loads, compares, updates, and saves persistent state.
 - emailer.py sends or dry-runs email.
@@ -76,6 +77,24 @@ Dry-run:
 - does not send Gmail email
 - does not save state
 - does not commit state
+
+Scraper backend
+The production default is still Playwright:
+SCRAPER_BACKEND=playwright
+
+Direct HTTP scraping can be tested without changing report or email behaviour:
+SCRAPER_BACKEND=direct
+
+Temporary fallback mode tries direct HTTP first and falls back to Playwright if direct target resolution or fetching fails:
+SCRAPER_BACKEND=direct_with_fallback
+
+Category filters default to rare records only:
+ORNITHO_CATEGORIES=rare
+
+To include both rare and very rare records:
+ORNITHO_CATEGORIES=rare,veryrare
+
+The GitHub daily and hourly workflows read SCRAPER_BACKEND and ORNITHO_CATEGORIES from repository variables, defaulting to Playwright and rare. This allows a production switch without editing code or the Cloudflare Worker.
 
 Persistent state
 The state file is tracked at:

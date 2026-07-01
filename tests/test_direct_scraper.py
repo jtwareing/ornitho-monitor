@@ -105,6 +105,54 @@ class DirectScraperTests(unittest.TestCase):
 
         self.assertEqual(record["species"], "Little Egrets")
 
+    def test_row_to_record_preserves_count_ranges(self):
+        record = row_to_record(
+            {
+                "listSubmenu": {"title": "Example"},
+                "species_array": {"name": "Red Kite", "latin_name": "Milvus milvus"},
+                "sighting_detail_short_raw": "Red Kites",
+                "birds_count_raw": "2-3",
+                "date_raw": "2026-06-30T00:00:00+02:00",
+            }
+        )
+
+        self.assertEqual(record["count"], "2-3")
+
+    def test_multiple_rows_under_same_date_are_all_records(self):
+        def fetch(url):
+            page = parse_qs(urlsplit(url).query)["mp_current_page"][0]
+            if page != "1":
+                return json.dumps({"data": [], "data_is_finished": 1})
+            return json.dumps(
+                {
+                    "data": [
+                        {
+                            "listTop": {"title": "Tuesday, June 30th, 2026"},
+                            "listSubmenu": {"title": "Place A"},
+                            "species_array": {"name": "Black Kite", "latin_name": "Milvus migrans"},
+                            "birds_count_raw": "1",
+                            "date_raw": "2026-06-30T00:00:00+02:00",
+                        },
+                        {
+                            "listTop": {"title": "Tuesday, June 30th, 2026"},
+                            "listSubmenu": {"title": "Place B"},
+                            "species_array": {"name": "Red Kite", "latin_name": "Milvus milvus"},
+                            "birds_count_raw": "2-3",
+                            "date_raw": "2026-06-30T00:00:00+02:00",
+                        },
+                    ],
+                    "data_is_finished": 1,
+                }
+            )
+
+        result = DirectOrnithoScraper(fetch).fetch_records_for_document_url(
+            "https://www.ornitho.de/index.php?m_id=5&sp_SChoice=category&sp_cC=-abc"
+        )
+
+        self.assertEqual(len(result.records), 2)
+        self.assertEqual([record["species"] for record in result.records], ["Black Kite", "Red Kite"])
+        self.assertEqual(result.records[1]["count"], "2-3")
+
     def test_paginates_until_finished(self):
         calls = []
 

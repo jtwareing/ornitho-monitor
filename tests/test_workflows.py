@@ -46,6 +46,15 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("xvfb-run python -m ornitho.main", daily)
         self.assertNotIn("--mode notify", daily)
 
+    def test_production_workflows_default_to_playwright_backend(self):
+        daily = self.workflow_text("ornitho.yml")
+        hourly = self.workflow_text("ornitho-notify.yml")
+
+        for workflow in (daily, hourly):
+            self.assertIn("SCRAPER_BACKEND: ${{ vars.SCRAPER_BACKEND || 'playwright' }}", workflow)
+            self.assertIn("ORNITHO_CATEGORIES: ${{ vars.ORNITHO_CATEGORIES || 'rare' }}", workflow)
+            self.assertIn('echo "scraper_backend=${SCRAPER_BACKEND}"', workflow)
+
     def test_direct_shadow_compare_is_manual_only_and_no_email_or_state(self):
         shadow = self.workflow_text("ornitho-direct-shadow-compare.yml")
 

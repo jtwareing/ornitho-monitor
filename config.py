@@ -36,3 +36,9 @@ ATTEMPTS = 5
 WAIT_SECONDS = 20
 HEADLESS = False
 DRY_RUN = os.environ.get("DRY_RUN", "False").strip().lower() in {"1", "true", "yes", "on"}
+SCRAPER_BACKEND = os.environ.get("SCRAPER_BACKEND", "playwright").strip().lower()
+ORNITHO_CATEGORIES = tuple(
+    category.strip().lower().replace("-", "")
+    for category in os.environ.get("ORNITHO_CATEGORIES", "rare").split(",")
+    if category.strip()
+)

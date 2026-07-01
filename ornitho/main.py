@@ -2,8 +2,19 @@ import argparse
 
 from playwright.sync_api import sync_playwright
 
-from config import OUT, MONITORS, ATTEMPTS, WAIT_SECONDS, HEADLESS, DRY_RUN, STATE_PATH
+from config import (
+    OUT,
+    MONITORS,
+    ATTEMPTS,
+    WAIT_SECONDS,
+    HEADLESS,
+    DRY_RUN,
+    STATE_PATH,
+    SCRAPER_BACKEND,
+    ORNITHO_CATEGORIES,
+)
 from emailer import send_email
+from ornitho.direct_scraper import CURRENT_OBSERVATIONS_URL, DirectOrnithoScraper
 from ornitho.report import build_notification_report, build_report
 from ornitho.scraper import check_target_with_retry
 from ornitho.state import compare_current_records, load_state, save_state, update_state
@@ -11,13 +22,63 @@ from ornitho.state import compare_current_records, load_state, save_state, updat
 DAILY_MODE = "daily"
 NOTIFY_MODE = "notify"
 NOTIFICATION_SUBJECT = "Ornitho Rare Bird Notification"
+PLAYWRIGHT_BACKEND = "playwright"
+DIRECT_BACKEND = "direct"
+DIRECT_WITH_FALLBACK_BACKEND = "direct_with_fallback"
+SCRAPER_BACKENDS = (PLAYWRIGHT_BACKEND, DIRECT_BACKEND, DIRECT_WITH_FALLBACK_BACKEND)
 
 
 def should_send_report(mode, new_count):
     return mode == DAILY_MODE or new_count > 0
 
 
-def run_monitor(browser, monitor, state, mode=DAILY_MODE, persist_state=True):
+def check_target_records(
+    browser,
+    direct_scraper,
+    direct_index_html,
+    state_code,
+    district,
+    backend=PLAYWRIGHT_BACKEND,
+):
+    if backend in {DIRECT_BACKEND, DIRECT_WITH_FALLBACK_BACKEND}:
+        try:
+            result = direct_scraper.check_target(
+                (state_code, district),
+                index_html=direct_index_html,
+                categories=ORNITHO_CATEGORIES,
+            )
+            print(
+                "  Direct HTTP stats: "
+                f"requests={result.stats.request_count}, "
+                f"pages={result.stats.pages_fetched}, "
+                f"records={result.stats.records_parsed}, "
+                f"categories={','.join(result.stats.categories)}"
+            )
+            return result.records
+        except Exception as exc:
+            if backend == DIRECT_BACKEND:
+                raise
+            print(f"  Direct HTTP failed; falling back to Playwright: {type(exc).__name__}: {exc}")
+
+    return check_target_with_retry(
+        browser,
+        state_code,
+        district,
+        attempts=ATTEMPTS,
+        wait_seconds=WAIT_SECONDS,
+    )
+
+
+def run_monitor(
+    browser,
+    monitor,
+    state,
+    mode=DAILY_MODE,
+    persist_state=True,
+    backend=PLAYWRIGHT_BACKEND,
+    direct_scraper=None,
+    direct_index_html=None,
+):
     all_results = []
     errors = []
 
@@ -26,12 +87,13 @@ def run_monitor(browser, monitor, state, mode=DAILY_MODE, persist_state=True):
         print(f"Checking {label}...")
 
         try:
-            records = check_target_with_retry(
+            records = check_target_records(
                 browser,
+                direct_scraper,
+                direct_index_html,
                 state_code,
                 district,
-                attempts=ATTEMPTS,
-                wait_seconds=WAIT_SECONDS,
+                backend=backend,
             )
             all_results.append((label, records))
             print(f"  Records extracted: {len(records)}")
@@ -73,16 +135,51 @@ def run_monitor(browser, monitor, state, mode=DAILY_MODE, persist_state=True):
 
 
 def run(mode=DAILY_MODE):
+    if SCRAPER_BACKEND not in SCRAPER_BACKENDS:
+        raise RuntimeError(f"Unsupported SCRAPER_BACKEND: {SCRAPER_BACKEND}")
+
     state = load_state(STATE_PATH)
     print(f"State loaded from {STATE_PATH}.")
     print(f"Mode: {mode}")
+    print(f"Scraper backend: {SCRAPER_BACKEND}")
+    if SCRAPER_BACKEND in {DIRECT_BACKEND, DIRECT_WITH_FALLBACK_BACKEND}:
+        print(f"Ornitho categories: {','.join(ORNITHO_CATEGORIES)}")
+
+    direct_scraper = None
+    direct_index_html = None
+    if SCRAPER_BACKEND in {DIRECT_BACKEND, DIRECT_WITH_FALLBACK_BACKEND}:
+        direct_scraper = DirectOrnithoScraper()
+        direct_index_html = direct_scraper.fetch_text(CURRENT_OBSERVATIONS_URL)
+
+    if SCRAPER_BACKEND == DIRECT_BACKEND:
+        for monitor in MONITORS:
+            state = run_monitor(
+                None,
+                monitor,
+                state,
+                mode=mode,
+                persist_state=not DRY_RUN,
+                backend=SCRAPER_BACKEND,
+                direct_scraper=direct_scraper,
+                direct_index_html=direct_index_html,
+            )
+        return
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=HEADLESS)
 
         try:
             for monitor in MONITORS:
-                state = run_monitor(browser, monitor, state, mode=mode, persist_state=not DRY_RUN)
+                state = run_monitor(
+                    browser,
+                    monitor,
+                    state,
+                    mode=mode,
+                    persist_state=not DRY_RUN,
+                    backend=SCRAPER_BACKEND,
+                    direct_scraper=direct_scraper,
+                    direct_index_html=direct_index_html,
+                )
         finally:
             browser.close()
 
