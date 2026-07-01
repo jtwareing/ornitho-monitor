@@ -33,6 +33,14 @@ def should_send_report(mode, new_count):
     return mode == DAILY_MODE or new_count > 0
 
 
+def report_path_for_monitor(monitor_name):
+    safe_name = "".join(
+        char if char.isalnum() or char in {"-", "_"} else "_"
+        for char in monitor_name
+    ).strip("_")
+    return OUT.joinpath(f"{safe_name or 'monitor'}_report.txt")
+
+
 def check_target_records(
     browser,
     direct_scraper,
@@ -121,6 +129,7 @@ def run_monitor(
         report = build_notification_report(report_results, errors)
     else:
         report = build_report(report_results, errors)
+    report_path_for_monitor(monitor.name).write_text(report, encoding="utf-8")
     OUT.joinpath("multi_report.txt").write_text(report, encoding="utf-8")
 
     print()

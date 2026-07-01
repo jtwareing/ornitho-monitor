@@ -279,6 +279,9 @@ class MonitorProfileTests(unittest.TestCase):
                 state = empty_state()
                 for monitor in monitors:
                     state = main.run_monitor(object(), monitor, state, persist_state=True)
+                default_report = Path(tmpdir, "default_report.txt").read_text(encoding="utf-8")
+                simon_report = Path(tmpdir, "Simon_report.txt").read_text(encoding="utf-8")
+                multi_report = Path(tmpdir, "multi_report.txt").read_text(encoding="utf-8")
             finally:
                 main.OUT = original_out
                 main.STATE_PATH = original_state_path
@@ -294,6 +297,10 @@ class MonitorProfileTests(unittest.TestCase):
         self.assertEqual(set(state["monitors"]), {"default", "Simon"})
         self.assertIn("HB-HB", state["monitors"]["default"]["targets"])
         self.assertIn("NI-WTM", state["monitors"]["Simon"]["targets"])
+
+        self.assertIn("HB-HB Bird", default_report)
+        self.assertIn("NI-WTM Bird", simon_report)
+        self.assertIn("NI-WTM Bird", multi_report)
 
     def test_direct_backend_uses_direct_scraper_without_playwright_retry(self):
         install_dependency_stubs()
