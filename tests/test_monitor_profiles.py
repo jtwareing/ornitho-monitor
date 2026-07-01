@@ -28,35 +28,66 @@ def install_dependency_stubs():
 
 
 class MonitorProfileTests(unittest.TestCase):
-    def test_default_monitor_uses_email_to_and_current_targets(self):
-        original_extra_targets = os.environ.get("ORNITHO_NOTIFY_EXTRA_TARGETS")
+    def test_monitors_load_from_json_config(self):
         os.environ["EMAIL_TO"] = "birds@example.test"
         os.environ.pop("SCRAPER_BACKEND", None)
-        os.environ["ORNITHO_NOTIFY_EXTRA_TARGETS"] = "SH-NF"
+        os.environ.pop("ORNITHO_NOTIFY_EXTRA_TARGETS", None)
         import config
 
-        try:
-            config = importlib.reload(config)
+        config = importlib.reload(config)
 
-            self.assertEqual(len(config.MONITORS), 1)
-            self.assertEqual(config.MONITORS[0].name, "default")
-            self.assertEqual(config.MONITORS[0].email_to, "birds@example.test")
-            self.assertEqual(config.MONITORS[0].targets, config.TARGETS)
-            self.assertEqual(config.SCRAPER_BACKEND, "playwright")
-            self.assertEqual(config.NOTIFY_EXTRA_TARGETS, [("SH", "NF")])
-        finally:
-            if original_extra_targets is None:
-                os.environ.pop("ORNITHO_NOTIFY_EXTRA_TARGETS", None)
-            else:
-                os.environ["ORNITHO_NOTIFY_EXTRA_TARGETS"] = original_extra_targets
-            importlib.reload(config)
+        self.assertEqual(len(config.MONITORS), 2)
+        self.assertEqual(config.MONITORS[0].name, "default")
+        self.assertEqual(config.MONITORS[0].email_to, "birds@example.test")
+        self.assertEqual(config.MONITORS[0].targets, config.TARGETS)
+        self.assertEqual(config.MONITORS[1].name, "Simon")
+        self.assertEqual(config.MONITORS[1].email_to, "sim.kiese@gmail.com")
+        self.assertEqual(
+            config.MONITORS[1].targets,
+            [("NI", "WTM"), ("NI", "AUR"), ("NI", "FRI"), ("BE", "B")],
+        )
+        self.assertEqual(config.SCRAPER_BACKEND, "playwright")
+        self.assertEqual(config.NOTIFY_EXTRA_TARGETS, [])
 
     def test_parse_targets_requires_state_district_format(self):
         import config
 
         self.assertEqual(config.parse_targets("SH-NF, hb-hb"), [("SH", "NF"), ("HB", "HB")])
-        with self.assertRaisesRegex(ValueError, "STATE-DISTRICT"):
+        with self.assertRaisesRegex(config.MonitorConfigError, "STATE-DISTRICT"):
             config.parse_targets("SH")
+
+    def test_invalid_monitor_config_has_clear_error(self):
+        import config
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir, "monitors.json")
+            path.write_text('{"monitors": [{"name": "bad", "targets": ["NI-OHZ"]}]}', encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                config.MonitorConfigError,
+                "exactly one of email_to or email_to_env",
+            ):
+                config.load_monitors(path)
+
+    def test_duplicate_monitor_names_are_rejected(self):
+        import config
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir, "monitors.json")
+            path.write_text(
+                """
+                {
+                  "monitors": [
+                    {"name": "same", "email_to": "a@example.test", "targets": ["NI-OHZ"]},
+                    {"name": "same", "email_to": "b@example.test", "targets": ["NI-VER"]}
+                  ]
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(config.MonitorConfigError, "unique"):
+                config.load_monitors(path)
 
     def test_run_monitor_uses_monitor_targets_and_recipient(self):
         install_dependency_stubs()
@@ -205,6 +236,65 @@ class MonitorProfileTests(unittest.TestCase):
             1,
         )
 
+    def test_multiple_monitors_send_separate_reports_and_keep_state_isolated(self):
+        install_dependency_stubs()
+        import config
+        import ornitho.main as main
+        from ornitho.state import empty_state
+
+        sent = []
+
+        def fake_check_target_with_retry(browser, state, district, attempts, wait_seconds):
+            return [
+                {
+                    "date": "Saturday, June 27th, 2026",
+                    "location": f"{state}-{district} Marsh",
+                    "count": "1",
+                    "species": f"{state}-{district} Bird",
+                    "scientific": "Avis testus",
+                    "detail": "",
+                }
+            ]
+
+        def fake_send_email(report, dry_run=False, email_to=None, subject=None):
+            sent.append((email_to, report))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_out = main.OUT
+            original_state_path = main.STATE_PATH
+            original_dry_run = main.DRY_RUN
+            original_check = main.check_target_with_retry
+            original_send = main.send_email
+            try:
+                main.OUT = Path(tmpdir)
+                main.STATE_PATH = Path(tmpdir, "state.json")
+                main.DRY_RUN = False
+                main.check_target_with_retry = fake_check_target_with_retry
+                main.send_email = fake_send_email
+
+                monitors = [
+                    config.Monitor("default", "default@example.test", [("HB", "HB")]),
+                    config.Monitor("Simon", "sim.kiese@gmail.com", [("NI", "WTM")]),
+                ]
+                state = empty_state()
+                for monitor in monitors:
+                    state = main.run_monitor(object(), monitor, state, persist_state=True)
+            finally:
+                main.OUT = original_out
+                main.STATE_PATH = original_state_path
+                main.DRY_RUN = original_dry_run
+                main.check_target_with_retry = original_check
+                main.send_email = original_send
+
+        self.assertEqual([recipient for recipient, _ in sent], ["default@example.test", "sim.kiese@gmail.com"])
+        self.assertIn("HB-HB Bird", sent[0][1])
+        self.assertNotIn("NI-WTM Bird", sent[0][1])
+        self.assertIn("NI-WTM Bird", sent[1][1])
+        self.assertNotIn("HB-HB Bird", sent[1][1])
+        self.assertEqual(set(state["monitors"]), {"default", "Simon"})
+        self.assertIn("HB-HB", state["monitors"]["default"]["targets"])
+        self.assertIn("NI-WTM", state["monitors"]["Simon"]["targets"])
+
     def test_direct_backend_uses_direct_scraper_without_playwright_retry(self):
         install_dependency_stubs()
         import ornitho.main as main
@@ -279,6 +369,77 @@ class MonitorProfileTests(unittest.TestCase):
             main.check_target_with_retry = original_check
 
         self.assertEqual(result, fallback_records)
+
+    def test_direct_with_fallback_handles_initial_direct_setup_failure(self):
+        install_dependency_stubs()
+        import config
+        import ornitho.main as main
+
+        seen_targets = []
+
+        class FailingDirectScraper:
+            def fetch_text(self, _url):
+                raise TimeoutError("direct setup timed out")
+
+        class FakeBrowser:
+            def close(self):
+                return None
+
+        class FakeChromium:
+            def launch(self, headless=False):
+                return FakeBrowser()
+
+        class FakePlaywright:
+            chromium = FakeChromium()
+
+        class FakePlaywrightContext:
+            def __enter__(self):
+                return FakePlaywright()
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        def fake_check_target_with_retry(browser, state, district, attempts, wait_seconds):
+            seen_targets.append((state, district))
+            return []
+
+        def fake_send_email(report, dry_run=False, email_to=None, subject=None):
+            return None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_out = main.OUT
+            original_state_path = main.STATE_PATH
+            original_dry_run = main.DRY_RUN
+            original_backend = main.SCRAPER_BACKEND
+            original_monitors = main.MONITORS
+            original_direct_scraper = main.DirectOrnithoScraper
+            original_sync_playwright = main.sync_playwright
+            original_check = main.check_target_with_retry
+            original_send = main.send_email
+            try:
+                main.OUT = Path(tmpdir)
+                main.STATE_PATH = Path(tmpdir, "state.json")
+                main.DRY_RUN = True
+                main.SCRAPER_BACKEND = main.DIRECT_WITH_FALLBACK_BACKEND
+                main.MONITORS = [config.Monitor("test", "profile@example.test", [("HB", "HB")])]
+                main.DirectOrnithoScraper = FailingDirectScraper
+                main.sync_playwright = lambda: FakePlaywrightContext()
+                main.check_target_with_retry = fake_check_target_with_retry
+                main.send_email = fake_send_email
+
+                main.run(mode=main.NOTIFY_MODE)
+            finally:
+                main.OUT = original_out
+                main.STATE_PATH = original_state_path
+                main.DRY_RUN = original_dry_run
+                main.SCRAPER_BACKEND = original_backend
+                main.MONITORS = original_monitors
+                main.DirectOrnithoScraper = original_direct_scraper
+                main.sync_playwright = original_sync_playwright
+                main.check_target_with_retry = original_check
+                main.send_email = original_send
+
+        self.assertEqual(seen_targets, [("HB", "HB")])
 
     def test_explicit_none_recipient_does_not_fall_back_to_global_email_to(self):
         os.environ["EMAIL_FROM"] = "from@example.test"

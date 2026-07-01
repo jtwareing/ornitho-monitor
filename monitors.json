@@ -1,0 +1,26 @@
+{
+  "monitors": [
+    {
+      "name": "default",
+      "email_to_env": "EMAIL_TO",
+      "targets": [
+        "NI-OHZ",
+        "NI-VER",
+        "NI-OL",
+        "NI-OL*",
+        "NI-DH",
+        "HB-HB"
+      ]
+    },
+    {
+      "name": "Simon",
+      "email_to": "sim.kiese@gmail.com",
+      "targets": [
+        "NI-WTM",
+        "NI-AUR",
+        "NI-FRI",
+        "BE-B"
+      ]
+    }
+  ]
+}

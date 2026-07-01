@@ -159,13 +159,25 @@ def run(mode=DAILY_MODE):
             + ", ".join(f"{state}-{district}" for state, district in NOTIFY_EXTRA_TARGETS)
         )
 
+    active_backend = SCRAPER_BACKEND
     direct_scraper = None
     direct_index_html = None
     if SCRAPER_BACKEND in {DIRECT_BACKEND, DIRECT_WITH_FALLBACK_BACKEND}:
-        direct_scraper = DirectOrnithoScraper()
-        direct_index_html = direct_scraper.fetch_text(CURRENT_OBSERVATIONS_URL)
+        try:
+            direct_scraper = DirectOrnithoScraper()
+            direct_index_html = direct_scraper.fetch_text(CURRENT_OBSERVATIONS_URL)
+        except Exception as exc:
+            if SCRAPER_BACKEND == DIRECT_BACKEND:
+                raise
+            active_backend = PLAYWRIGHT_BACKEND
+            direct_scraper = None
+            direct_index_html = None
+            print(
+                "Direct HTTP setup failed; using Playwright fallback: "
+                f"{type(exc).__name__}: {exc}"
+            )
 
-    if SCRAPER_BACKEND == DIRECT_BACKEND:
+    if active_backend == DIRECT_BACKEND:
         for monitor in MONITORS:
             state = run_monitor(
                 None,
@@ -173,7 +185,7 @@ def run(mode=DAILY_MODE):
                 state,
                 mode=mode,
                 persist_state=not DRY_RUN,
-                backend=SCRAPER_BACKEND,
+                backend=active_backend,
                 direct_scraper=direct_scraper,
                 direct_index_html=direct_index_html,
                 extra_targets=NOTIFY_EXTRA_TARGETS if mode == NOTIFY_MODE else (),
@@ -191,7 +203,7 @@ def run(mode=DAILY_MODE):
                     state,
                     mode=mode,
                     persist_state=not DRY_RUN,
-                    backend=SCRAPER_BACKEND,
+                    backend=active_backend,
                     direct_scraper=direct_scraper,
                     direct_index_html=direct_index_html,
                     extra_targets=NOTIFY_EXTRA_TARGETS if mode == NOTIFY_MODE else (),

@@ -13,12 +13,12 @@ The scraper is deliberately separate from reporting, email, and state handling:
 - ornitho/main.py coordinates monitor execution modes.
 
 Monitors
-A monitor is configured in config.py with:
+A monitor is configured in monitors.json with:
 - name
-- email_to
+- email_to or email_to_env
 - targets
 
-The default monitor currently uses EMAIL_TO from the environment and these targets:
+The default monitor uses EMAIL_TO from the environment and these targets:
 - NI-OHZ
 - NI-VER
 - NI-OL
@@ -27,14 +27,14 @@ The default monitor currently uses EMAIL_TO from the environment and these targe
 - HB-HB
 
 Adding monitors
-Add another Monitor entry to MONITORS in config.py with a unique name, recipient, and target list.
+Add another monitor object to monitors.json with a unique name, recipient, and target list.
 
 Example:
-Monitor(
-    name="bremen",
-    email_to=os.environ.get("EMAIL_TO_BREMEN"),
-    targets=[("HB", "HB")],
-)
+{
+  "name": "bremen",
+  "email_to": "recipient@example.com",
+  "targets": ["HB-HB"]
+}
 
 Each monitor has independent state history, so the same record can be new for one monitor and already seen for another.
 
@@ -137,7 +137,6 @@ Ornitho Hourly Notifications
 - uses Notification mode
 - currently uses SCRAPER_BACKEND=direct_with_fallback during the cautious direct HTTP rollout
 - currently uses ORNITHO_CATEGORIES=rare,veryrare during the cautious direct HTTP rollout
-- temporarily includes SH-NF through ORNITHO_NOTIFY_EXTRA_TARGETS for production observation only; remove this workflow variable after validation
 - supports manual dry-run
 - commits state only after successful non-dry-run runs
 

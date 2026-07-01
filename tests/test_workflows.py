@@ -53,14 +53,14 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("ORNITHO_CATEGORIES: ${{ vars.ORNITHO_CATEGORIES || 'rare' }}", daily)
         self.assertIn('echo "scraper_backend=${SCRAPER_BACKEND}"', daily)
 
-    def test_hourly_workflow_uses_direct_with_fallback_and_temporary_observer_target(self):
+    def test_hourly_workflow_uses_direct_with_fallback_without_observer_target(self):
         hourly = self.workflow_text("ornitho-notify.yml")
         daily = self.workflow_text("ornitho.yml")
 
         self.assertIn("SCRAPER_BACKEND: direct_with_fallback", hourly)
         self.assertIn("ORNITHO_CATEGORIES: rare,veryrare", hourly)
-        self.assertIn("ORNITHO_NOTIFY_EXTRA_TARGETS: SH-NF", hourly)
-        self.assertIn("Temporary observer target", hourly)
+        self.assertNotIn("ORNITHO_NOTIFY_EXTRA_TARGETS", hourly)
+        self.assertNotIn("SH-NF", hourly)
         self.assertNotIn("ORNITHO_NOTIFY_EXTRA_TARGETS", daily)
 
     def test_direct_shadow_compare_is_manual_only_and_no_email_or_state(self):
