@@ -12,6 +12,7 @@ from config import (
     STATE_PATH,
     SCRAPER_BACKEND,
     ORNITHO_CATEGORIES,
+    NOTIFY_EXTRA_TARGETS,
 )
 from emailer import send_email
 from ornitho.direct_scraper import CURRENT_OBSERVATIONS_URL, DirectOrnithoScraper
@@ -78,11 +79,19 @@ def run_monitor(
     backend=PLAYWRIGHT_BACKEND,
     direct_scraper=None,
     direct_index_html=None,
+    extra_targets=(),
 ):
     all_results = []
     errors = []
+    targets = list(monitor.targets)
+    if extra_targets:
+        targets.extend(extra_targets)
+        print(
+            "Temporary notify-only extra targets: "
+            + ", ".join(f"{state}-{district}" for state, district in extra_targets)
+        )
 
-    for state_code, district in monitor.targets:
+    for state_code, district in targets:
         label = f"{state_code}-{district}"
         print(f"Checking {label}...")
 
@@ -144,6 +153,11 @@ def run(mode=DAILY_MODE):
     print(f"Scraper backend: {SCRAPER_BACKEND}")
     if SCRAPER_BACKEND in {DIRECT_BACKEND, DIRECT_WITH_FALLBACK_BACKEND}:
         print(f"Ornitho categories: {','.join(ORNITHO_CATEGORIES)}")
+    if mode == NOTIFY_MODE and NOTIFY_EXTRA_TARGETS:
+        print(
+            "Notify extra targets: "
+            + ", ".join(f"{state}-{district}" for state, district in NOTIFY_EXTRA_TARGETS)
+        )
 
     direct_scraper = None
     direct_index_html = None
@@ -162,6 +176,7 @@ def run(mode=DAILY_MODE):
                 backend=SCRAPER_BACKEND,
                 direct_scraper=direct_scraper,
                 direct_index_html=direct_index_html,
+                extra_targets=NOTIFY_EXTRA_TARGETS if mode == NOTIFY_MODE else (),
             )
         return
 
@@ -179,6 +194,7 @@ def run(mode=DAILY_MODE):
                     backend=SCRAPER_BACKEND,
                     direct_scraper=direct_scraper,
                     direct_index_html=direct_index_html,
+                    extra_targets=NOTIFY_EXTRA_TARGETS if mode == NOTIFY_MODE else (),
                 )
         finally:
             browser.close()

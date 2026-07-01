@@ -2,6 +2,20 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 
+
+def parse_targets(value: str) -> list[tuple[str, str]]:
+    targets = []
+    for raw_target in value.split(","):
+        raw_target = raw_target.strip()
+        if not raw_target:
+            continue
+        if "-" not in raw_target:
+            raise ValueError(f"Target must use STATE-DISTRICT format: {raw_target}")
+        state, district = raw_target.split("-", 1)
+        targets.append((state.strip().upper(), district.strip().upper()))
+    return targets
+
+
 OUT = Path("output")
 OUT.mkdir(exist_ok=True)
 STATE_PATH = Path("state/state.json")
@@ -42,3 +56,4 @@ ORNITHO_CATEGORIES = tuple(
     for category in os.environ.get("ORNITHO_CATEGORIES", "rare").split(",")
     if category.strip()
 )
+NOTIFY_EXTRA_TARGETS = parse_targets(os.environ.get("ORNITHO_NOTIFY_EXTRA_TARGETS", ""))

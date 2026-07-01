@@ -29,17 +29,34 @@ def install_dependency_stubs():
 
 class MonitorProfileTests(unittest.TestCase):
     def test_default_monitor_uses_email_to_and_current_targets(self):
+        original_extra_targets = os.environ.get("ORNITHO_NOTIFY_EXTRA_TARGETS")
         os.environ["EMAIL_TO"] = "birds@example.test"
         os.environ.pop("SCRAPER_BACKEND", None)
+        os.environ["ORNITHO_NOTIFY_EXTRA_TARGETS"] = "SH-NF"
         import config
 
-        config = importlib.reload(config)
+        try:
+            config = importlib.reload(config)
 
-        self.assertEqual(len(config.MONITORS), 1)
-        self.assertEqual(config.MONITORS[0].name, "default")
-        self.assertEqual(config.MONITORS[0].email_to, "birds@example.test")
-        self.assertEqual(config.MONITORS[0].targets, config.TARGETS)
-        self.assertEqual(config.SCRAPER_BACKEND, "playwright")
+            self.assertEqual(len(config.MONITORS), 1)
+            self.assertEqual(config.MONITORS[0].name, "default")
+            self.assertEqual(config.MONITORS[0].email_to, "birds@example.test")
+            self.assertEqual(config.MONITORS[0].targets, config.TARGETS)
+            self.assertEqual(config.SCRAPER_BACKEND, "playwright")
+            self.assertEqual(config.NOTIFY_EXTRA_TARGETS, [("SH", "NF")])
+        finally:
+            if original_extra_targets is None:
+                os.environ.pop("ORNITHO_NOTIFY_EXTRA_TARGETS", None)
+            else:
+                os.environ["ORNITHO_NOTIFY_EXTRA_TARGETS"] = original_extra_targets
+            importlib.reload(config)
+
+    def test_parse_targets_requires_state_district_format(self):
+        import config
+
+        self.assertEqual(config.parse_targets("SH-NF, hb-hb"), [("SH", "NF"), ("HB", "HB")])
+        with self.assertRaisesRegex(ValueError, "STATE-DISTRICT"):
+            config.parse_targets("SH")
 
     def test_run_monitor_uses_monitor_targets_and_recipient(self):
         install_dependency_stubs()
@@ -87,6 +104,52 @@ class MonitorProfileTests(unittest.TestCase):
         self.assertEqual(len(sent), 1)
         self.assertTrue(sent[0][1])
         self.assertEqual(sent[0][2], "profile@example.test")
+
+    def test_run_monitor_can_include_notify_only_extra_targets(self):
+        install_dependency_stubs()
+        import config
+        import ornitho.main as main
+        from ornitho.state import empty_state
+
+        seen_targets = []
+
+        def fake_check_target_with_retry(browser, state, district, attempts, wait_seconds):
+            seen_targets.append((state, district))
+            return []
+
+        def fake_send_email(report, dry_run=False, email_to=None, subject=None):
+            return None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_out = main.OUT
+            original_dry_run = main.DRY_RUN
+            original_check = main.check_target_with_retry
+            original_send = main.send_email
+            try:
+                main.OUT = Path(tmpdir)
+                main.DRY_RUN = True
+                main.check_target_with_retry = fake_check_target_with_retry
+                main.send_email = fake_send_email
+
+                monitor = config.Monitor(
+                    name="test",
+                    email_to="profile@example.test",
+                    targets=[("HB", "HB")],
+                )
+                main.run_monitor(
+                    object(),
+                    monitor,
+                    empty_state(),
+                    persist_state=False,
+                    extra_targets=[("SH", "NF")],
+                )
+            finally:
+                main.OUT = original_out
+                main.DRY_RUN = original_dry_run
+                main.check_target_with_retry = original_check
+                main.send_email = original_send
+
+        self.assertEqual(seen_targets, [("HB", "HB"), ("SH", "NF")])
 
     def test_run_monitor_saves_state_when_persistence_is_enabled(self):
         install_dependency_stubs()

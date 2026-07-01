@@ -135,6 +135,9 @@ Ornitho Hourly Notifications
 - dispatch-only workflow for Notification mode
 - production hourly triggering should be done by the external scheduler described below
 - uses Notification mode
+- currently uses SCRAPER_BACKEND=direct_with_fallback during the cautious direct HTTP rollout
+- currently uses ORNITHO_CATEGORIES=rare,veryrare during the cautious direct HTTP rollout
+- temporarily includes SH-NF through ORNITHO_NOTIFY_EXTRA_TARGETS for production observation only; remove this workflow variable after validation
 - supports manual dry-run
 - commits state only after successful non-dry-run runs
 

@@ -48,12 +48,20 @@ class WorkflowTests(unittest.TestCase):
 
     def test_production_workflows_default_to_playwright_backend(self):
         daily = self.workflow_text("ornitho.yml")
-        hourly = self.workflow_text("ornitho-notify.yml")
 
-        for workflow in (daily, hourly):
-            self.assertIn("SCRAPER_BACKEND: ${{ vars.SCRAPER_BACKEND || 'playwright' }}", workflow)
-            self.assertIn("ORNITHO_CATEGORIES: ${{ vars.ORNITHO_CATEGORIES || 'rare' }}", workflow)
-            self.assertIn('echo "scraper_backend=${SCRAPER_BACKEND}"', workflow)
+        self.assertIn("SCRAPER_BACKEND: ${{ vars.SCRAPER_BACKEND || 'playwright' }}", daily)
+        self.assertIn("ORNITHO_CATEGORIES: ${{ vars.ORNITHO_CATEGORIES || 'rare' }}", daily)
+        self.assertIn('echo "scraper_backend=${SCRAPER_BACKEND}"', daily)
+
+    def test_hourly_workflow_uses_direct_with_fallback_and_temporary_observer_target(self):
+        hourly = self.workflow_text("ornitho-notify.yml")
+        daily = self.workflow_text("ornitho.yml")
+
+        self.assertIn("SCRAPER_BACKEND: direct_with_fallback", hourly)
+        self.assertIn("ORNITHO_CATEGORIES: rare,veryrare", hourly)
+        self.assertIn("ORNITHO_NOTIFY_EXTRA_TARGETS: SH-NF", hourly)
+        self.assertIn("Temporary observer target", hourly)
+        self.assertNotIn("ORNITHO_NOTIFY_EXTRA_TARGETS", daily)
 
     def test_direct_shadow_compare_is_manual_only_and_no_email_or_state(self):
         shadow = self.workflow_text("ornitho-direct-shadow-compare.yml")
