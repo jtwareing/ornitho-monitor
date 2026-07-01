@@ -92,6 +92,19 @@ class DirectScraperTests(unittest.TestCase):
             },
         )
 
+    def test_row_to_record_prefers_display_species_name(self):
+        record = row_to_record(
+            {
+                "listSubmenu": {"title": "Example"},
+                "species_array": {"name": "Little Egret", "latin_name": "Egretta garzetta"},
+                "sighting_detail_short_raw": "Little Egrets",
+                "birds_count_raw": "3",
+                "date_raw": "2026-06-30T00:00:00+02:00",
+            }
+        )
+
+        self.assertEqual(record["species"], "Little Egrets")
+
     def test_paginates_until_finished(self):
         calls = []
 

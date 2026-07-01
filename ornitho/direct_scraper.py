@@ -204,7 +204,7 @@ def row_to_record(row: dict) -> dict[str, str]:
         "date": format_date(row.get("date_raw", ""), fallback=fallback_date),
         "location": clean_text((row.get("listSubmenu") or {}).get("title", "")),
         "count": clean_text(row.get("birds_count_raw") or row.get("birds_count") or ""),
-        "species": clean_text(species.get("name") or row.get("sighting_detail_short_raw") or ""),
+        "species": clean_text(row.get("sighting_detail_short_raw") or species.get("name") or ""),
         "scientific": clean_text(species.get("latin_name", "")),
         "detail": detail_from_row(row),
         "rarity": clean_text(species.get("rarity", "")),
