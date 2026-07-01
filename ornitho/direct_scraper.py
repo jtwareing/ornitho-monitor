@@ -54,6 +54,7 @@ class DirectScrapeStats:
 class DirectScrapeResult:
     records: list[dict[str, str]]
     stats: DirectScrapeStats
+    raw_rows: list[dict] = field(default_factory=list)
 
 
 class TargetResolutionError(RuntimeError):
@@ -231,6 +232,7 @@ class DirectOrnithoScraper:
         stats = DirectScrapeStats(categories=tuple(categories))
         started = time.perf_counter()
         records: list[dict[str, str]] = []
+        raw_rows: list[dict] = []
         filtered_url = apply_categories(document_url, stats.categories)
 
         try:
@@ -241,6 +243,7 @@ class DirectOrnithoScraper:
                 stats.pages_fetched += 1
 
                 rows = payload.get("data") or []
+                raw_rows.extend(rows)
                 records.extend(row_to_record(row) for row in rows)
 
                 if payload.get("data_is_finished") or not rows:
@@ -249,7 +252,7 @@ class DirectOrnithoScraper:
                 raise RuntimeError(f"Ornitho JSON pagination exceeded {max_pages} pages")
 
             stats.records_parsed = len(records)
-            return DirectScrapeResult(records=records, stats=stats)
+            return DirectScrapeResult(records=records, stats=stats, raw_rows=raw_rows)
         finally:
             stats.runtime_seconds = time.perf_counter() - started
 

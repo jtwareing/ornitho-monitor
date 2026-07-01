@@ -203,6 +203,7 @@ def run_shadow_compare(
             direct_records_parsed += result.stats.records_parsed
             direct_results[label] = {
                 "records": [normalize_direct_record(record) for record in result.records],
+                "raw_rows": result.raw_rows,
                 "runtime_seconds": time.perf_counter() - started,
                 "stats": result.stats.__dict__,
                 "error": None,
@@ -210,6 +211,7 @@ def run_shadow_compare(
         except Exception as exc:
             direct_results[label] = {
                 "records": [],
+                "raw_rows": [],
                 "runtime_seconds": time.perf_counter() - started,
                 "stats": {},
                 "error": f"{type(exc).__name__}: {exc}",

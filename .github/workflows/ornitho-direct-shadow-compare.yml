@@ -71,4 +71,7 @@ jobs:
         if: always()
         with:
           name: ornitho-direct-shadow-compare
-          path: output/direct-shadow-compare/
+          path: |
+            output/direct-shadow-compare/
+            output/*_last_page.html
+            output/*_last_page_text.txt

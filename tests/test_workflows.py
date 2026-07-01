@@ -57,6 +57,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("permissions:", shadow)
         self.assertIn("contents: read", shadow)
         self.assertIn("xvfb-run python -m ornitho.direct_shadow_run", shadow)
+        self.assertIn("output/*_last_page.html", shadow)
+        self.assertIn("output/*_last_page_text.txt", shadow)
         self.assertNotIn("ornitho.main", shadow)
         self.assertNotIn("EMAIL_PASSWORD", shadow)
         self.assertNotIn("git push", shadow)
