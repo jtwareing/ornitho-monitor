@@ -14,6 +14,34 @@ from ornitho.scraper import check_target_with_retry
 COMPARISON_FIELDS = ("species", "count", "date", "location", "scientific", "detail", "rarity")
 
 
+def parse_extra_targets(value: str) -> list[tuple[str, str]]:
+    targets = []
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if "-" not in item:
+            raise ValueError(f"Invalid extra target '{item}'; expected STATE-DISTRICT")
+        state, district = item.split("-", 1)
+        state = state.strip().upper()
+        district = district.strip().upper()
+        if not state or not district:
+            raise ValueError(f"Invalid extra target '{item}'; expected STATE-DISTRICT")
+        targets.append((state, district))
+    return targets
+
+
+def combine_targets(extra_targets: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    combined = []
+    seen = set()
+    for target in [*TARGETS, *extra_targets]:
+        if target in seen:
+            continue
+        seen.add(target)
+        combined.append(target)
+    return combined
+
+
 def record_key(record: dict[str, str]) -> tuple[str, str, str, str, str, str]:
     return (
         record.get("species", ""),
@@ -69,6 +97,8 @@ def write_text_report(path: Path, comparison: dict[str, object], summary: dict[s
         "Ornitho Direct Shadow Compare",
         "",
         f"Targets: {summary['targets']}",
+        f"Configured production targets: {summary['configured_targets']}",
+        f"Extra shadow-only targets: {summary['extra_shadow_targets']}",
         f"Categories: {', '.join(summary['categories'])}",
         f"Playwright attempts per target: {summary['playwright_attempts']}",
         f"Playwright wait seconds: {summary['playwright_wait_seconds']}",
@@ -112,19 +142,22 @@ def write_text_report(path: Path, comparison: dict[str, object], summary: dict[s
 def run_shadow_compare(
     output_dir: Path,
     categories: tuple[str, ...],
+    extra_targets: list[tuple[str, str]] | None = None,
     playwright_attempts: int = 2,
     playwright_wait_seconds: int = 5,
     playwright_headless: bool = False,
 ) -> dict[str, object]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    labels = [f"{state}-{district}" for state, district in TARGETS]
+    extra_targets = extra_targets or []
+    targets = combine_targets(extra_targets)
+    labels = [f"{state}-{district}" for state, district in targets]
 
     playwright_results: dict[str, object] = {}
     playwright_started = time.perf_counter()
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=playwright_headless)
         try:
-            for state, district in TARGETS:
+            for state, district in targets:
                 label = f"{state}-{district}"
                 print(f"Playwright shadow check: {label}", flush=True)
                 started = time.perf_counter()
@@ -159,7 +192,7 @@ def run_shadow_compare(
     direct_pages_fetched = 0
     direct_records_parsed = 0
 
-    for state, district in TARGETS:
+    for state, district in targets:
         label = f"{state}-{district}"
         print(f"Direct HTTP shadow check: {label}", flush=True)
         started = time.perf_counter()
@@ -212,6 +245,8 @@ def run_shadow_compare(
 
     summary = {
         "targets": labels,
+        "configured_targets": [f"{state}-{district}" for state, district in TARGETS],
+        "extra_shadow_targets": [f"{state}-{district}" for state, district in extra_targets],
         "categories": list(categories),
         "playwright_attempts": playwright_attempts,
         "playwright_wait_seconds": playwright_wait_seconds,
@@ -244,6 +279,11 @@ def parse_args() -> argparse.Namespace:
         default="rare",
         help="Comma-separated Ornitho category filters for the direct HTTP scraper.",
     )
+    parser.add_argument(
+        "--extra-targets",
+        default="",
+        help="Comma-separated shadow-only targets such as SH-HEI. These are not production monitors.",
+    )
     parser.add_argument("--playwright-attempts", type=int, default=2)
     parser.add_argument("--playwright-wait-seconds", type=int, default=5)
     parser.add_argument("--playwright-headless", action="store_true")
@@ -253,9 +293,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     categories = tuple(category.strip() for category in args.categories.split(",") if category.strip())
+    extra_targets = parse_extra_targets(args.extra_targets)
     result = run_shadow_compare(
         Path(args.output_dir),
         categories,
+        extra_targets=extra_targets,
         playwright_attempts=args.playwright_attempts,
         playwright_wait_seconds=args.playwright_wait_seconds,
         playwright_headless=args.playwright_headless,

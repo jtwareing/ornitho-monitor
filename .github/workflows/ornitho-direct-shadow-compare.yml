@@ -8,6 +8,11 @@ on:
         required: true
         default: "rare"
         type: string
+      extra_targets:
+        description: "Comma-separated shadow-only targets such as SH-HEI"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -26,6 +31,7 @@ jobs:
           echo "Event: ${GITHUB_EVENT_NAME}"
           echo "Commit: ${GITHUB_SHA}"
           echo "Categories: ${{ inputs.categories }}"
+          echo "Extra shadow-only targets: ${{ inputs.extra_targets }}"
           echo "Berlin time: $(TZ=Europe/Berlin date '+%Y-%m-%d %H:%M:%S %Z')"
           echo "UTC time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 
@@ -48,8 +54,8 @@ jobs:
 
       - name: Run direct shadow comparison
         run: |
-          echo "Python command: xvfb-run python -m ornitho.direct_shadow_run --categories '${{ inputs.categories }}' --playwright-attempts 2 --playwright-wait-seconds 5"
-          xvfb-run python -m ornitho.direct_shadow_run --categories "${{ inputs.categories }}" --playwright-attempts 2 --playwright-wait-seconds 5
+          echo "Python command: xvfb-run python -m ornitho.direct_shadow_run --categories '${{ inputs.categories }}' --extra-targets '${{ inputs.extra_targets }}' --playwright-attempts 2 --playwright-wait-seconds 5"
+          xvfb-run python -m ornitho.direct_shadow_run --categories "${{ inputs.categories }}" --extra-targets "${{ inputs.extra_targets }}" --playwright-attempts 2 --playwright-wait-seconds 5
 
       - name: Show comparison summary
         if: always()

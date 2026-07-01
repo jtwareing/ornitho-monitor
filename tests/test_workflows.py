@@ -50,6 +50,8 @@ class WorkflowTests(unittest.TestCase):
         shadow = self.workflow_text("ornitho-direct-shadow-compare.yml")
 
         self.assertIn("workflow_dispatch:", shadow)
+        self.assertIn("extra_targets:", shadow)
+        self.assertIn("--extra-targets", shadow)
         self.assertNotIn("schedule:", shadow)
         self.assertNotIn("cron:", shadow)
         self.assertIn("permissions:", shadow)
