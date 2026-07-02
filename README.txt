@@ -2,6 +2,14 @@ Ornitho Monitor
 
 Version 1.0 Release Candidate
 
+Version 1.0 scope: hourly rare-bird notifications only.
+
+The daily summary workflow is paused for v1.0 because its Playwright path is
+not reliable enough in GitHub Actions. The workflow remains manually
+dispatchable for diagnostics, but it has no schedule and should not be treated
+as production until it is migrated to the direct HTTP backend or otherwise
+revalidated.
+
 This project monitors selected Ornitho regions, extracts rare-bird records,
 sends email reports, and stores persistent notification state in the
 repository.
@@ -20,15 +28,14 @@ Cloudflare Worker cron
 -> state save and Git commit when appropriate
 -> run artifact upload
 
-Daily summary remains a separate GitHub Actions workflow:
+Daily summary is deferred for v1.0. A manual diagnostic workflow remains:
 
-GitHub schedule or manual dispatch
+manual dispatch
 -> Ornitho Daily Monitor workflow
 -> scraper
 -> scrape-query fanout across monitors
 -> daily report generation
--> email
--> state save and Git commit when appropriate
+-> dry-run or explicitly requested diagnostic email/state behaviour
 -> artifact upload
 
 Core modules
@@ -109,6 +116,7 @@ python -m ornitho.main
 - default mode
 - sends each enabled monitor a complete current rare-bird report
 - preserves the original daily report format
+- not part of v1.0 production scheduling
 
 Notification mode:
 
@@ -141,8 +149,8 @@ This uses direct HTTP only, with bounded setup retries, short backoff, strict
 request timeouts, and a workflow timeout. It does not automatically invoke
 Playwright.
 
-Daily production currently uses the workflow variable SCRAPER_BACKEND when set,
-otherwise it defaults to:
+Daily diagnostic runs currently use the workflow variable SCRAPER_BACKEND when
+set, otherwise they default to:
 
 SCRAPER_BACKEND=playwright
 
@@ -152,8 +160,9 @@ Available backends:
 - direct_with_fallback: direct first, then Playwright fallback
 - direct_with_retries: bounded direct HTTP retry strategy for hourly production
 
-Playwright remains available for daily mode and manual diagnostic/shadow
-comparison workflows. It is not the automatic hourly recovery path.
+Playwright remains available for manual daily diagnostics and shadow comparison
+workflows. It is not part of the v1.0 hourly production path and is not the
+automatic hourly recovery path.
 
 Failure semantics
 
@@ -257,7 +266,8 @@ GitHub Actions secrets:
 - OPERATIONS_EMAIL: maintainer alert recipient
 
 GitHub repository variables:
-- SCRAPER_BACKEND: optional daily workflow override; defaults to playwright
+- SCRAPER_BACKEND: optional manual daily diagnostic override; defaults to
+  playwright
 - ORNITHO_MONITORING_DISABLED: optional global shutdown flag
 
 Current note:
@@ -288,9 +298,8 @@ Ornitho Hourly Notifications:
 
 Ornitho Daily Monitor:
 - file: .github/workflows/ornitho.yml
-- scheduled around 20:23 Berlin time
-- protected by a Berlin-hour guard
-- supports manual dispatch
+- manual dispatch only for v1.0 diagnostics
+- no schedule, so no daily scheduled emails are sent
 - mode: daily
 - uploads ornitho-report artifact
 
@@ -411,7 +420,7 @@ Release checklist
 [ ] GitHub repository variables configured
 [ ] OPERATIONS_EMAIL verified
 [ ] Hourly workflow verified
-[ ] Daily workflow verified
+[ ] Daily workflow schedule disabled
 [ ] Direct HTTP backend verified
 [ ] Fanout verified
 [ ] Multi-monitor routing verified
@@ -447,3 +456,17 @@ Invalid config:
 - fix monitors.json
 - rerun tests
 - trigger a dry-run before returning to production
+
+Version 1.0 readiness definition
+
+v1.0 is ready when the hourly notification system is verified with:
+- Cloudflare dispatch
+- multi-monitor configuration
+- direct HTTP bounded runtime
+- scrape-query fanout
+- persistent per-monitor state
+- operational alerts
+- uploaded run artifacts
+- daily summary schedule disabled
+
+Daily summary is explicitly deferred beyond v1.0.

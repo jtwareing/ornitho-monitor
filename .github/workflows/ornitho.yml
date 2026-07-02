@@ -9,10 +9,6 @@ on:
         default: "false"
         type: boolean
 
-  schedule:
-    - cron: "23 18 * * *"
-    - cron: "23 19 * * *"
-
 permissions:
   contents: write
 

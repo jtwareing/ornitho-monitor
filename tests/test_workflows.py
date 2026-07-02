@@ -31,14 +31,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("schedule:", hourly)
         self.assertNotIn("cron:", hourly)
 
-    def test_daily_schedule_runs_around_berlin_8pm_off_top_of_hour(self):
+    def test_daily_workflow_is_manual_only_for_v1(self):
         daily = self.workflow_text("ornitho.yml")
 
-        self.assertIn('cron: "23 18 * * *"', daily)
-        self.assertIn('cron: "23 19 * * *"', daily)
-        self.assertNotIn('cron: "0 18 * * *"', daily)
-        self.assertNotIn('cron: "0 19 * * *"', daily)
-        self.assertIn('if [ "${berlin_hour}" = "20" ]; then', daily)
+        self.assertIn("workflow_dispatch:", daily)
+        self.assertNotIn("schedule:", daily)
+        self.assertNotIn("cron:", daily)
 
     def test_daily_workflow_still_uses_daily_mode_entrypoint(self):
         daily = self.workflow_text("ornitho.yml")
