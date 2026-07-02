@@ -1,46 +1,70 @@
-Ornitho Daily Rare Bird Monitor
+Ornitho Monitor
 
-Overview
-This project monitors selected Ornitho regions, extracts rare-bird records, sends email reports, and stores persistent record state in the repository.
+Version 1.0 Release Candidate
 
-The scraper is deliberately separate from reporting, email, and state handling:
-- ornitho/scraper.py navigates Ornitho and returns parsed records.
-- ornitho/parser.py converts page text into record dictionaries.
-- ornitho/direct_scraper.py can read Ornitho's JSON observation endpoint directly.
+This project monitors selected Ornitho regions, extracts rare-bird records,
+sends email reports, and stores persistent notification state in the
+repository.
+
+Production architecture
+
+The current production path is:
+
+Cloudflare Worker cron
+-> GitHub workflow_dispatch
+-> Ornitho Hourly Notifications workflow
+-> direct HTTP scraper with bounded retries
+-> scrape-query fanout across monitors
+-> per-monitor state comparison
+-> per-monitor email decision
+-> state save and Git commit when appropriate
+-> run artifact upload
+
+Daily summary remains a separate GitHub Actions workflow:
+
+GitHub schedule or manual dispatch
+-> Ornitho Daily Monitor workflow
+-> scraper
+-> scrape-query fanout across monitors
+-> daily report generation
+-> email
+-> state save and Git commit when appropriate
+-> artifact upload
+
+Core modules
+
+- config.py loads and validates monitor configuration and runtime settings.
+- ornitho/direct_scraper.py reads Ornitho's JSON observation endpoint.
+- ornitho/scraper.py remains the Playwright scraper used by daily mode and
+  manual diagnostics.
+- ornitho/main.py coordinates execution, scrape planning, fanout, state,
+  reporting, email, and run summaries.
 - ornitho/report.py builds plain-text daily and notification reports.
-- ornitho/state.py loads, compares, updates, and saves persistent state.
-- emailer.py sends or dry-runs email.
-- ornitho/main.py coordinates monitor execution modes.
+- ornitho/state.py loads, compares, updates, and atomically saves state.
+- emailer.py sends email or prints dry-run output.
 
-Scraping is planned across all enabled monitors before reports are built. The
-runner deduplicates by unique scrape query, including target, categories, and
-backend, then fans the records out to each monitor that requested that query.
-Reports, notification state, and recipients remain monitor-specific.
+Monitor configuration
 
-Monitors
-A monitor is configured in monitors.json with:
-- schema_version at the top level
-- name
-- enabled
-- pause_until, optional YYYY-MM-DD
-- email_to or email_to_env
-- categories
-- targets
+Monitors are configured in monitors.json.
 
-The default monitor uses EMAIL_TO from the environment and these targets:
-- NI-OHZ
-- NI-VER
-- NI-OL
-- NI-OL*
-- NI-DH
-- HB-HB
+Required top-level field:
+- schema_version: currently 1
 
-Adding monitors
-Add another monitor object to monitors.json with a unique name, recipient, and target list.
+Each monitor has:
+- name: unique monitor name
+- enabled: true or false
+- email_to or email_to_env: exactly one recipient source
+- categories.daily: non-empty list of Ornitho categories for daily summaries
+- categories.notify: non-empty list of Ornitho categories for notifications
+- targets: list of STATE-DISTRICT target strings
+
+Optional monitor field:
+- pause_until: YYYY-MM-DD
 
 Example:
+
 {
-  "name": "bremen",
+  "name": "example",
   "enabled": true,
   "email_to": "recipient@example.com",
   "categories": {
@@ -50,73 +74,124 @@ Example:
   "targets": ["HB-HB"]
 }
 
-Each monitor has independent state history, so the same record can be new for one monitor and already seen for another.
-Disabled monitors are skipped before scraping or email sending.
-Paused monitors are skipped before scraping or email sending until the end of
-their pause_until date.
+The default monitor uses email_to_env=EMAIL_TO and receives the original
+production targets:
+- NI-OHZ
+- NI-VER
+- NI-OL
+- NI-OL*
+- NI-DH
+- HB-HB
 
-Adding regions
-Add a tuple to a monitor's targets:
-("STATE", "DISTRICT")
+Simon is configured as a separate monitor with independent targets, recipient,
+reports, and notification state.
 
-For example:
-("HB", "HB")
+Configuration validation happens at startup before scraping or sending email.
+Invalid JSON, invalid schema_version, invalid targets, missing recipients,
+invalid categories, duplicate monitor names, and invalid pause_until values fail
+the run clearly.
 
-Daily Summary mode
-Daily Summary is the default mode:
+Scrape planning and fanout
+
+The runner deduplicates work by unique scrape query, not by monitor. A scrape
+query includes the target, category set, and backend. Each unique query is
+scraped once and then fanned out to every enabled monitor that requested it.
+
+State and email behaviour remain monitor-specific. A record can be new for one
+monitor and already seen for another.
+
+Execution modes
+
+Daily Summary:
+
 python -m ornitho.main
 
-It sends one report containing all current rare records. The report format is unchanged from the original daily report.
+- default mode
+- sends each enabled monitor a complete current rare-bird report
+- preserves the original daily report format
 
-Notification mode
-Notification mode is for hourly alerts:
+Notification mode:
+
 python -m ornitho.main --mode notify
 
-It compares current records with state/state.json.
+- intended for hourly runs
+- compares current records with state/state.json
+- sends only genuinely new records
+- sends no user email when there are no new records
+- still saves state on successful non-dry-run runs
 
-If new records exist:
-- report contains only new records
-- email is sent
-- state is updated after the email step
+Dry-run mode
 
-If no new records exist:
-- no email is sent
-- the log explains why
-- state is still saved on real runs
-
-Dry-run behavior
-Set DRY_RUN=True to test safely.
+Set DRY_RUN=True.
 
 Dry-run:
-- scrapes Ornitho
-- compares against state
-- prints the email subject and body
-- does not send Gmail email
-- does not save state
-- does not commit state
+- scrapes and compares records
+- prints email subject/body
+- sends no Gmail email
+- saves no state
+- commits no state
 
-Scraper backend
-The Daily Summary production default is still Playwright:
-SCRAPER_BACKEND=playwright
+Scraper backend strategy
 
-Direct HTTP scraping can be tested without changing report or email behaviour:
-SCRAPER_BACKEND=direct
+Hourly production uses:
 
-Temporary fallback mode tries direct HTTP first and falls back to Playwright if direct target resolution or fetching fails:
-SCRAPER_BACKEND=direct_with_fallback
-
-Hourly notification production uses bounded direct HTTP retries without automatic Playwright fallback:
 SCRAPER_BACKEND=direct_with_retries
 
-The bounded direct backend uses short request timeouts, limited setup retries, and a total runtime budget. If direct HTTP still fails with a known bounded scraper/runtime failure, the workflow uploads the output artifact, marks run_summary.json as HANDLED_FAILURE, sends no user email, and does not commit state. Playwright remains available for manual diagnostic and shadow comparison workflows.
+This uses direct HTTP only, with bounded setup retries, short backoff, strict
+request timeouts, and a workflow timeout. It does not automatically invoke
+Playwright.
 
-Category filters are configured per monitor in monitors.json. Daily and notification modes can use different category lists so current behaviour is preserved while allowing future monitors to choose their own rarity levels.
+Daily production currently uses the workflow variable SCRAPER_BACKEND when set,
+otherwise it defaults to:
 
-Persistent state
-The state file is tracked at:
+SCRAPER_BACKEND=playwright
+
+Available backends:
+- playwright: browser navigation scraper
+- direct: direct HTTP scraper
+- direct_with_fallback: direct first, then Playwright fallback
+- direct_with_retries: bounded direct HTTP retry strategy for hourly production
+
+Playwright remains available for daily mode and manual diagnostic/shadow
+comparison workflows. It is not the automatic hourly recovery path.
+
+Failure semantics
+
+SUCCESS:
+- the run completed normally
+- user emails may or may not have been sent depending on new records
+- state may be saved on non-dry-run runs
+- run_summary.json is uploaded
+
+HANDLED_FAILURE:
+- a known bounded scraper/runtime failure occurred, such as direct setup timeout
+- no user bird emails are sent
+- state is not saved
+- scrape_failure.txt is uploaded
+- run_summary.json records status HANDLED_FAILURE
+- one operational alert is sent if OPERATIONS_EMAIL is configured
+- the GitHub job exits successfully to avoid hourly failure-notification spam
+
+Unexpected failure:
+- code error
+- invalid configuration
+- missing required secret
+- state corruption
+- artifact upload failure
+- email-sending error when an email was expected
+- any failure outside the known bounded scraper/runtime class
+
+Unexpected failures fail the GitHub workflow. They should be investigated as
+defects or operational configuration problems.
+
+State persistence
+
+Persistent state lives at:
+
 state/state.json
 
-It stores stable hashes of seen records by monitor and target. Record identity is based on:
+It stores stable hashes of seen records by monitor and target. Record identity
+uses:
 - date
 - location
 - count
@@ -124,234 +199,251 @@ It stores stable hashes of seen records by monitor and target. Record identity i
 - scientific name
 - detail
 
-State writes are local atomic replacements: a temporary file is written, flushed, and then moved into place.
+State writes use an atomic local replacement: write temporary file, flush, then
+replace state/state.json.
 
-Important trade-off
-Email sending and committing state to GitHub cannot be one atomic transaction.
+Email and Git state commit are intentionally not atomic. The system sends email
+first, then saves and commits state. This favours not missing rare-bird alerts.
+The trade-off is that a successful email followed by a failed state commit can
+cause a later duplicate notification.
 
-This project intentionally sends email first, then saves/commits state.
+Operations alerts
 
-Reason:
-- missing a rare-bird alert is worse than receiving a duplicate
-- if email fails, state is not advanced and a later run can retry
-- if email succeeds but the state commit fails, a duplicate alert may happen later
+Operations alerts are infrastructure alerts, not bird notifications.
 
-Workflow logs should make state commit failures visible.
+Set GitHub secret OPERATIONS_EMAIL to enable them.
 
-GitHub workflows
-Ornitho Daily Monitor
-- file: .github/workflows/ornitho.yml
-- runs once per day around 20:23 Berlin time
-- uses Daily Summary mode
-- supports manual dry-run
-- commits state only after successful non-dry-run runs
-
-Ornitho Hourly Notifications
-- file: .github/workflows/ornitho-notify.yml
-- dispatch-only workflow for Notification mode
-- production hourly triggering should be done by the external scheduler described below
-- uses Notification mode
-- uses SCRAPER_BACKEND=direct_with_retries for bounded direct HTTP runtime
-- supports manual dry-run
-- commits state only after successful non-dry-run runs
-
-Hourly run observability
-Every hourly notification run writes output/run_summary.json. On bounded direct
-scraper failure, output/scrape_failure.txt is also written. The workflow uploads
-output/ as an artifact even when the run fails.
-
-Operational alert emails are separate from bird notification emails. Set
-OPERATIONS_EMAIL to send failure alerts to maintainers. If OPERATIONS_EMAIL is
-unset, the monitor records that no operational alert was sent and does not fall
-back to EMAIL_TO or any monitor recipient.
+If OPERATIONS_EMAIL is unset:
+- no operational alert is sent
+- the run summary records that the alert was skipped
+- the system does not fall back to EMAIL_TO or monitor recipients
 
 Operational controls
-Disable all user monitoring:
-- set the repository variable ORNITHO_MONITORING_DISABLED to true
-- hourly runs will skip all monitors before scraping
-- no user notification emails are sent
-- no state is saved
-- operational alerts still work for unexpected failures
 
-Re-enable all user monitoring:
-- set ORNITHO_MONITORING_DISABLED to false or remove the repository variable
+Disable one monitor:
+- set enabled to false in monitors.json
+- commit and push
+
+Re-enable one monitor:
+- set enabled to true
+- commit and push
 
 Pause one monitor:
 - add pause_until to that monitor in monitors.json
 - format: YYYY-MM-DD
-- example: "pause_until": "2026-07-15"
-- the monitor is skipped while today's Berlin date is before or equal to pause_until
+- the monitor is skipped while today's Berlin date is before or equal to
+  pause_until
 
 Re-enable one paused monitor:
-- remove pause_until from that monitor, or set it to a date before today
+- remove pause_until, or set it to a past date
+- commit and push
 
-Disable one monitor:
-- set that monitor's enabled field to false in monitors.json
+Global emergency shutdown:
+- set repository variable ORNITHO_MONITORING_DISABLED=true
+- hourly user monitoring skips all monitors before scraping
+- no user notification emails are sent
+- no state is saved
+- operational alerts still work for unexpected failures
 
-Re-enable one disabled monitor:
-- set enabled to true
+Re-enable globally:
+- set ORNITHO_MONITORING_DISABLED=false, or remove the variable
 
-Rollback procedure:
-1. Find the previous working commit in GitHub Actions or with git log.
-2. Revert the bad commit with git revert <commit-sha>.
-3. Push main.
-4. Trigger Ornitho Hourly Notifications with dry_run=true.
-5. Inspect run_summary.json and logs before returning to production.
+Production configuration
 
-Ornitho Notify Test
+GitHub Actions secrets:
+- EMAIL_FROM: sender Gmail address
+- EMAIL_PASSWORD: Gmail app password
+- EMAIL_TO: default monitor recipient used by email_to_env=EMAIL_TO
+- OPERATIONS_EMAIL: maintainer alert recipient
+
+GitHub repository variables:
+- SCRAPER_BACKEND: optional daily workflow override; defaults to playwright
+- ORNITHO_MONITORING_DISABLED: optional global shutdown flag
+
+Current note:
+- ORNITHO_CATEGORIES is not a production control in v1.0. Categories are
+  configured per monitor in monitors.json.
+- EMAIL_TO is currently consumed as a GitHub secret, not as a repository
+  variable, because it is referenced by monitors.json through email_to_env.
+
+Cloudflare configuration:
+- Worker secret GITHUB_TOKEN: fine-grained GitHub token for this repository
+- token permission: Actions read/write
+- cron schedule: 23 * * * *
+- dispatch endpoint:
+  POST https://api.github.com/repos/jtwareing/ornitho-monitor/actions/workflows/ornitho-notify.yml/dispatches
+- production body:
+  {"ref":"main","inputs":{"dry_run":"false"}}
+
+GitHub workflows
+
+Ornitho Hourly Notifications:
+- file: .github/workflows/ornitho-notify.yml
+- dispatch-only
+- triggered hourly by Cloudflare
+- mode: notify
+- backend: direct_with_retries
+- uploads ornitho-notify-report artifact
+- commits state only after successful non-dry-run runs with state changes
+
+Ornitho Daily Monitor:
+- file: .github/workflows/ornitho.yml
+- scheduled around 20:23 Berlin time
+- protected by a Berlin-hour guard
+- supports manual dispatch
+- mode: daily
+- uploads ornitho-report artifact
+
+Ornitho Notify Test:
 - file: .github/workflows/ornitho-notify-test.yml
-- manual-only test workflow for Notification mode
-- useful before changing production notification scheduling
+- manual-only notification-mode test workflow
 
-All workflows that can update state share the same concurrency group:
+Ornitho Direct Shadow Compare:
+- file: .github/workflows/ornitho-direct-shadow-compare.yml
+- manual-only diagnostic comparison of Playwright and direct HTTP
+- sends no email and saves no state
+
+All workflows that can update state share concurrency group:
+
 ornitho-monitor-state
 
-This prevents two workflow runs from updating state at the same time.
+Operator guide
 
-External hourly trigger
-GitHub native scheduled cron has not created hourly runs reliably for this repository.
-The hourly notification workflow is therefore intentionally dispatch-only.
+Add a new monitor:
+1. Edit monitors.json.
+2. Add a monitor with unique name, recipient, categories, and targets.
+3. Run unit tests locally.
+4. Trigger Ornitho Hourly Notifications with dry_run=true.
+5. Inspect run_summary.json.
+6. Confirm records and recipient routing are monitor-specific.
+7. Commit and push.
 
-Recommended scheduler: Cloudflare Workers Cron Triggers.
+Pause a monitor:
+1. Add "pause_until": "YYYY-MM-DD" to that monitor.
+2. Commit and push.
+3. Trigger a dry-run.
+4. Confirm run_summary.json lists the monitor under monitors_skipped.
 
-Why:
-- independent from GitHub's scheduled workflow system
-- low-maintenance managed scheduler
-- token can be stored as a Cloudflare Worker secret
-- the Worker only needs to call GitHub's workflow dispatch API
+Disable a monitor:
+1. Set enabled=false.
+2. Commit and push.
+3. Trigger a dry-run.
+4. Confirm the monitor is skipped before scrape planning.
 
-GitHub workflow dispatch endpoint:
-POST https://api.github.com/repos/jtwareing/ornitho-monitor/actions/workflows/ornitho-notify.yml/dispatches
+Global shutdown:
+1. Set GitHub repository variable ORNITHO_MONITORING_DISABLED=true.
+2. Observe the next hourly run or trigger a dry-run.
+3. Confirm no user monitoring occurs and no state is saved.
 
-Headers:
-Accept: application/vnd.github+json
-Authorization: Bearer <GITHUB_TOKEN>
-X-GitHub-Api-Version: 2022-11-28
-Content-Type: application/json
+Rollback:
+1. Find the previous working commit in GitHub Actions or git log.
+2. Revert the bad commit:
+   git revert <commit-sha>
+3. Push main.
+4. Trigger Ornitho Hourly Notifications with dry_run=true.
+5. Inspect logs and run_summary.json before returning to production.
 
-Body for production hourly notifications:
-{
-  "ref": "main",
-  "inputs": {
-    "dry_run": "false"
-  }
-}
+Inspect GitHub artifacts:
+1. Open the workflow run in GitHub Actions.
+2. Download the uploaded artifact.
+3. For hourly runs, inspect ornitho-notify-report/run_summary.json.
+4. If present, inspect scrape_failure.txt.
 
-Body for a safe external dry-run test:
-{
-  "ref": "main",
-  "inputs": {
-    "dry_run": "true"
-  }
-}
+Using GitHub CLI:
 
-GitHub token permissions:
-- use a fine-grained personal access token
-- repository access: jtwareing/ornitho-monitor only
-- repository permissions: Actions read/write
-- no Contents write permission is needed for dispatching; the workflow uses GITHUB_TOKEN for state commits
+gh run view <run-id> --repo jtwareing/ornitho-monitor --log
+gh run download <run-id> --repo jtwareing/ornitho-monitor --dir output/gh-artifacts
 
-Cloudflare Worker code:
-export default {
-  async scheduled(event, env, ctx) {
-    const response = await fetch(
-      "https://api.github.com/repos/jtwareing/ornitho-monitor/actions/workflows/ornitho-notify.yml/dispatches",
-      {
-        method: "POST",
-        headers: {
-          "Accept": "application/vnd.github+json",
-          "Authorization": `Bearer ${env.GITHUB_TOKEN}`,
-          "X-GitHub-Api-Version": "2022-11-28",
-          "Content-Type": "application/json",
-          "User-Agent": "ornitho-monitor-cloudflare-worker"
-        },
-        body: JSON.stringify({
-          ref: "main",
-          inputs: {
-            dry_run: "false"
-          }
-        })
-      }
-    );
+Interpret run_summary.json:
+- overall_run_status: SUCCESS, HANDLED_FAILURE, or FAILED
+- dry_run: whether user email/state writes were disabled
+- active_backend: scraper backend actually used
+- monitors_loaded/enabled/skipped: monitor routing
+- unique_scrape_queries_planned: fanout deduplication count
+- actual_scrape_queries_executed: completed scrape count
+- records_per_monitor: per-monitor record counts where available
+- emails: user and operations email decisions
+- state: whether state was saved or skipped
 
-    if (!response.ok) {
-      throw new Error(`GitHub workflow dispatch failed: ${response.status} ${await response.text()}`);
-    }
-  }
-};
+Interpret HANDLED_FAILURE:
+- this is usually an Ornitho/direct HTTP availability problem
+- no user bird email was sent
+- state was not saved
+- operational alert should be sent if OPERATIONS_EMAIL is configured
+- GitHub job success is expected
 
-Cloudflare schedule expression:
-23 * * * *
-
-Cloudflare setup:
-1. Create a Worker.
-2. Add the Worker code above.
-3. Add a Worker secret named GITHUB_TOKEN containing the fine-grained GitHub token.
-4. Add a Cron Trigger with expression: 23 * * * *
-5. Deploy the Worker.
-6. Temporarily set dry_run to "true" in the Worker body and trigger/test it once.
-7. Confirm a GitHub Actions workflow_dispatch run appears for Ornitho Hourly Notifications.
-8. Inspect logs for Mode: notify and DRY_RUN enabled.
-9. Set dry_run back to "false" for production.
-
-Required GitHub secrets
-- EMAIL_FROM
-- EMAIL_TO
-- EMAIL_PASSWORD
-
-Optional GitHub secrets
-- OPERATIONS_EMAIL, recommended for operational failure alerts
+Recover from repeated scraper failures:
+1. Confirm failures are HANDLED_FAILURE, not unexpected workflow failures.
+2. Inspect scrape_failure.txt for timeout or HTTP errors.
+3. Check whether Ornitho is reachable manually.
+4. If the failure is persistent, set ORNITHO_MONITORING_DISABLED=true to stop
+   user monitoring noise.
+5. Use the manual Direct Shadow Compare workflow or local diagnostics to
+   determine whether direct HTTP or Ornitho changed.
+6. Re-enable only after a dry-run succeeds or the failure mode is understood.
 
 Local verification
-Run unit tests:
+
+Run all unit tests:
+
 python -m unittest discover -s tests
 
-Run Daily Summary safely:
+Compile check:
+
+python -m compileall config.py emailer.py ornitho tests
+
+Safe daily run:
+
 $env:DRY_RUN = "True"
 python -m ornitho.main
 
-Run Notification mode safely:
+Safe notification run:
+
 $env:DRY_RUN = "True"
 python -m ornitho.main --mode notify
 
-GitHub verification
-Trigger dry-run notification workflow:
-gh workflow run "Ornitho Hourly Notifications" --repo jtwareing/ornitho-monitor -f dry_run=true
+Release checklist
 
-Watch it:
-gh run watch <run-id> --repo jtwareing/ornitho-monitor --exit-status
-
-Inspect logs:
-gh run view <run-id> --repo jtwareing/ornitho-monitor --log
-
-Download artifacts:
-gh run download <run-id> --repo jtwareing/ornitho-monitor --dir output/gh-artifacts
-
-Expected dry-run log lines:
-- Mode: notify
-- DRY_RUN enabled; email not sent.
-- DRY_RUN enabled; state not saved.
+[ ] Cloudflare Worker configured
+[ ] Cloudflare Worker secret GITHUB_TOKEN configured
+[ ] Cloudflare cron trigger configured
+[ ] GitHub secrets configured
+[ ] GitHub repository variables configured
+[ ] OPERATIONS_EMAIL verified
+[ ] Hourly workflow verified
+[ ] Daily workflow verified
+[ ] Direct HTTP backend verified
+[ ] Fanout verified
+[ ] Multi-monitor routing verified
+[ ] State save/skip behaviour verified
+[ ] Artifacts verified
+[ ] Documentation complete
 
 Troubleshooting
-No email arrived:
-- check workflow logs for "Reached email step."
-- check "EMAIL_FROM configured", "EMAIL_TO configured", and "EMAIL_PASSWORD configured"
-- check whether DRY_RUN was true
-- check Gmail app password validity
+
+No bird email arrived:
+- check whether the run was dry-run
+- check whether there were new records
+- check EMAIL_FROM, EMAIL_TO, and EMAIL_PASSWORD configuration log lines
+- inspect run_summary.json emails.user_sent and emails.user_skipped
+
+No operational alert arrived:
+- check OPERATIONS_EMAIL configured log line
+- inspect run_summary.json emails.operations_alert_sent
+- confirm the failure was a handled or unexpected failure requiring an alert
 
 Duplicate notification arrived:
-- check whether previous run failed after sending but before committing state
-- inspect state/state.json for the target's seen_record_keys
+- check whether a previous run sent email but failed before committing state
+- inspect state/state.json for the monitor history
 - inspect workflow logs for state commit failure
 
-No artifact uploaded:
-- check whether output/ was created
-- check actions/upload-artifact step logs
+No state commit:
+- dry-run never commits state
+- HANDLED_FAILURE never commits state
+- no-record successful runs may leave state unchanged
+- commit step logs "State unchanged; nothing to commit." when appropriate
 
-Playwright failure:
-- check Install Playwright and browser dependencies step
-- check Run Ornitho monitor step for navigation timeout details
-
-State schema failure:
-- state/state.json must contain schema_version 1
-- unsupported versions fail loudly so future migrations can be explicit
+Invalid config:
+- fix monitors.json
+- rerun tests
+- trigger a dry-run before returning to production
