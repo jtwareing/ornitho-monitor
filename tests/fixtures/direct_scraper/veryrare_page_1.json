@@ -1,0 +1,23 @@
+{
+  "data": [
+    {
+      "listTop": {"title": "Wednesday, July 1st, 2026"},
+      "listSubmenu": {"title": "Friesland Coast [321] / Hooksiel"},
+      "species_array": {
+        "name": "Pallid Harrier",
+        "latin_name": "Circus macrourus",
+        "rarity": "veryrare"
+      },
+      "sighting_detail_short_raw": "Pallid Harrier",
+      "birds_count": "1",
+      "date_raw": "2026-07-01T00:00:00+02:00",
+      "remarks": [
+        {"title": "Detail", "content": "juvenile"}
+      ],
+      "remarks_hidden": [
+        {"title": "Comment", "content": "observer notes checked"}
+      ]
+    }
+  ],
+  "data_is_finished": 1
+}

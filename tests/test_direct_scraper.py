@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import time
 import unittest
 from urllib.parse import parse_qs, urlsplit
@@ -13,6 +14,13 @@ from ornitho.direct_scraper import (
     observation_page_url,
     row_to_record,
 )
+
+
+FIXTURES = Path(__file__).parent / "fixtures" / "direct_scraper"
+
+
+def fixture_text(name):
+    return (FIXTURES / name).read_text(encoding="utf-8")
 
 
 def district_onclick(code, title, selected_suffix):
@@ -198,6 +206,104 @@ class DirectScraperTests(unittest.TestCase):
         self.assertEqual(result.records, [])
         self.assertEqual(result.stats.pages_fetched, 1)
         self.assertEqual(result.stats.records_parsed, 0)
+
+    def test_fixture_rare_records_parse_expected_fields_and_pagination(self):
+        fixture_by_page = {
+            "1": fixture_text("rare_page_1.json"),
+            "2": fixture_text("rare_page_2.json"),
+        }
+
+        def fetch(url):
+            page = parse_qs(urlsplit(url).query)["mp_current_page"][0]
+            return fixture_by_page[page]
+
+        result = DirectOrnithoScraper(fetch).fetch_records_for_document_url(
+            "https://www.ornitho.de/index.php?m_id=5&sp_SChoice=category&sp_cC=-rare",
+            categories=("rare",),
+        )
+
+        self.assertEqual(result.stats.pages_fetched, 2)
+        self.assertEqual(result.stats.records_parsed, 3)
+        self.assertEqual(len(result.raw_rows), 3)
+        self.assertEqual(
+            result.records,
+            [
+                {
+                    "date": "Tuesday, June 30th, 2026",
+                    "location": "Diepholz Marsh [123] / Diepholz",
+                    "count": "1",
+                    "species": "Black Kite",
+                    "scientific": "Milvus migrans",
+                    "detail": "Detail northbound over wetland",
+                    "rarity": "rare",
+                },
+                {
+                    "date": "Tuesday, June 30th, 2026",
+                    "location": "Bremen Harbour [456] / Bremen",
+                    "count": "2-3",
+                    "species": "Caspian Tern",
+                    "scientific": "Hydroprogne caspia",
+                    "detail": "Comment seen fishing from public path",
+                    "rarity": "rare",
+                },
+                {
+                    "date": "Monday, June 29th, 2026",
+                    "location": "Oldenburg Meadows [789] / Oldenburg",
+                    "count": "4",
+                    "species": "Little Egrets",
+                    "scientific": "Egretta garzetta",
+                    "detail": "",
+                    "rarity": "rare",
+                },
+            ],
+        )
+
+    def test_fixture_veryrare_records_parse_expected_fields(self):
+        def fetch(_url):
+            return fixture_text("veryrare_page_1.json")
+
+        result = DirectOrnithoScraper(fetch).fetch_records_for_document_url(
+            "https://www.ornitho.de/index.php?m_id=5&sp_SChoice=category&sp_cC=-veryrare",
+            categories=("veryrare",),
+        )
+
+        self.assertEqual(result.stats.pages_fetched, 1)
+        self.assertEqual(result.stats.records_parsed, 1)
+        self.assertEqual(
+            result.records[0],
+            {
+                "date": "Wednesday, July 1st, 2026",
+                "location": "Friesland Coast [321] / Hooksiel",
+                "count": "1",
+                "species": "Pallid Harrier",
+                "scientific": "Circus macrourus",
+                "detail": "Detail juvenile | Comment observer notes checked",
+                "rarity": "veryrare",
+            },
+        )
+
+    def test_fixture_empty_response_parses_no_records(self):
+        def fetch(_url):
+            return fixture_text("empty_page_1.json")
+
+        result = DirectOrnithoScraper(fetch).fetch_records_for_document_url(
+            "https://www.ornitho.de/index.php?m_id=5&sp_SChoice=category&sp_cC=-empty",
+            categories=("rare", "veryrare"),
+        )
+
+        self.assertEqual(result.records, [])
+        self.assertEqual(result.raw_rows, [])
+        self.assertEqual(result.stats.pages_fetched, 1)
+        self.assertEqual(result.stats.records_parsed, 0)
+
+    def test_fixture_malformed_response_fails_loudly(self):
+        def fetch(_url):
+            return fixture_text("malformed_response.json")
+
+        with self.assertRaises(json.JSONDecodeError):
+            DirectOrnithoScraper(fetch).fetch_records_for_document_url(
+                "https://www.ornitho.de/index.php?m_id=5&sp_SChoice=category&sp_cC=-bad"
+            )
 
     def test_fetch_text_with_timeout_enforces_wall_clock_timeout(self):
         original_fetch = direct_scraper_module.fetch_text_without_wall_clock_guard

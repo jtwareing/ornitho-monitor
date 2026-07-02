@@ -1,0 +1,18 @@
+{
+  "data": [
+    {
+      "listTop": {"title": "Monday, June 29th, 2026"},
+      "listSubmenu": {"title": "Oldenburg Meadows [789] / Oldenburg"},
+      "species_array": {
+        "name": "Little Egret",
+        "latin_name": "Egretta garzetta",
+        "rarity": "rare"
+      },
+      "sighting_detail_short_raw": "Little Egrets",
+      "birds_count_raw": "4",
+      "date_raw": "2026-06-29T00:00:00+02:00",
+      "remarks": []
+    }
+  ],
+  "data_is_finished": 1
+}

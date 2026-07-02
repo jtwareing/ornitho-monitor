@@ -1,0 +1,35 @@
+{
+  "data": [
+    {
+      "listTop": {"title": "Tuesday, June 30th, 2026"},
+      "listSubmenu": {"title": "Diepholz Marsh [123] / Diepholz"},
+      "species_array": {
+        "name": "Black Kite",
+        "latin_name": "Milvus migrans",
+        "rarity": "rare"
+      },
+      "sighting_detail_short_raw": "Black Kite",
+      "birds_count_raw": "1",
+      "date_raw": "2026-06-30T00:00:00+02:00",
+      "remarks": [
+        {"title": "Detail", "content": "northbound over wetland"}
+      ]
+    },
+    {
+      "listTop": {"title": "Tuesday, June 30th, 2026"},
+      "listSubmenu": {"title": "Bremen Harbour [456] / Bremen"},
+      "species_array": {
+        "name": "Caspian Tern",
+        "latin_name": "Hydroprogne caspia",
+        "rarity": "rare"
+      },
+      "sighting_detail_short_raw": "Caspian Tern",
+      "birds_count_raw": "2-3",
+      "date_raw": "2026-06-30T00:00:00+02:00",
+      "remarks_hidden": [
+        {"title": "Comment", "content": "seen fishing from public path"}
+      ]
+    }
+  ],
+  "data_is_finished": 0
+}
