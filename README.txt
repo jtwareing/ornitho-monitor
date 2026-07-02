@@ -12,6 +12,11 @@ The scraper is deliberately separate from reporting, email, and state handling:
 - emailer.py sends or dry-runs email.
 - ornitho/main.py coordinates monitor execution modes.
 
+Scraping is planned across all enabled monitors before reports are built. The
+runner deduplicates by unique scrape query, including target, categories, and
+backend, then fans the records out to each monitor that requested that query.
+Reports, notification state, and recipients remain monitor-specific.
+
 Monitors
 A monitor is configured in monitors.json with:
 - schema_version at the top level

@@ -1,4 +1,5 @@
 import argparse
+from dataclasses import dataclass
 import time
 
 from playwright.sync_api import sync_playwright
@@ -42,6 +43,25 @@ SCRAPER_BACKENDS = (
 
 class DirectScraperRuntimeError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class ScrapeQuery:
+    state_code: str
+    district: str
+    categories: tuple[str, ...]
+    backend: str
+
+    @property
+    def label(self):
+        return f"{self.state_code}-{self.district}"
+
+
+@dataclass(frozen=True)
+class MonitorScrapeRequest:
+    monitor_name: str
+    label: str
+    query: ScrapeQuery
 
 
 def should_send_report(mode, new_count):
@@ -123,6 +143,101 @@ def fetch_direct_index_with_retries(direct_scraper, deadline=None):
     raise DirectScraperRuntimeError(message)
 
 
+def build_monitor_scrape_requests(monitors, mode=DAILY_MODE, backend=PLAYWRIGHT_BACKEND, extra_targets=()):
+    requests = []
+    for monitor in monitors:
+        targets = list(monitor.targets)
+        if extra_targets:
+            targets.extend(extra_targets)
+
+        categories = tuple(monitor.categories[mode])
+        print(f"Monitor '{monitor.name}' categories for {mode}: {','.join(categories)}")
+        if extra_targets:
+            print(
+                f"Monitor '{monitor.name}' temporary notify-only extra targets: "
+                + ", ".join(f"{state}-{district}" for state, district in extra_targets)
+            )
+
+        for state_code, district in targets:
+            query = ScrapeQuery(
+                state_code=state_code,
+                district=district,
+                categories=categories,
+                backend=backend,
+            )
+            requests.append(
+                MonitorScrapeRequest(
+                    monitor_name=monitor.name,
+                    label=query.label,
+                    query=query,
+                )
+            )
+    return requests
+
+
+def unique_scrape_queries(requests):
+    queries = {}
+    for request in requests:
+        queries.setdefault(request.query, request.query)
+    return list(queries.values())
+
+
+def log_scrape_plan(monitors, enabled_monitors, requests, queries):
+    print(f"Monitors loaded: {len(monitors)}")
+    print(f"Monitors enabled: {len(enabled_monitors)}")
+    print(f"Unique scrape queries: {len(queries)}")
+    for query in queries:
+        requested_by = sorted(
+            {request.monitor_name for request in requests if request.query == query}
+        )
+        print(
+            "  Query "
+            f"{query.label} categories={','.join(query.categories)} "
+            f"backend={query.backend} requested_by={','.join(requested_by)}"
+        )
+
+
+def execute_scrape_plan(
+    queries,
+    browser,
+    backend=PLAYWRIGHT_BACKEND,
+    direct_scraper=None,
+    direct_index_html=None,
+    deadline=None,
+):
+    results = {}
+    errors = {}
+    print(f"Actual scrapes performed: {len(queries)}")
+    for query in queries:
+        print(
+            f"Scraping {query.label} "
+            f"categories={','.join(query.categories)} backend={query.backend}..."
+        )
+        try:
+            records = check_target_records(
+                browser,
+                direct_scraper,
+                direct_index_html,
+                query.state_code,
+                query.district,
+                backend=backend,
+                categories=query.categories,
+                deadline=deadline,
+            )
+            results[query] = records
+            print(f"  Records extracted: {len(records)}")
+        except Exception as e:
+            if backend == DIRECT_WITH_RETRIES_BACKEND:
+                raise
+            errors[query] = (type(e).__name__, str(e))
+            print(f"  Error after retries: {type(e).__name__}: {e}")
+    return results, errors
+
+
+def requests_for_monitor(requests, monitor_name):
+    return [request for request in requests if request.monitor_name == monitor_name]
+
+
 def check_target_records(
     browser,
     direct_scraper,
@@ -171,55 +286,34 @@ def check_target_records(
     )
 
 
-def run_monitor(
-    browser,
+def run_monitor_from_scraped(
     monitor,
     state,
+    monitor_requests,
+    scraped_results,
+    scrape_errors,
     mode=DAILY_MODE,
     persist_state=True,
-    backend=PLAYWRIGHT_BACKEND,
-    direct_scraper=None,
-    direct_index_html=None,
-    extra_targets=(),
-    deadline=None,
 ):
     all_results = []
     errors = []
-    targets = list(monitor.targets)
-    categories = monitor.categories[mode]
-    print(f"Monitor '{monitor.name}' categories for {mode}: {','.join(categories)}")
-    if extra_targets:
-        targets.extend(extra_targets)
-        print(
-            "Temporary notify-only extra targets: "
-            + ", ".join(f"{state}-{district}" for state, district in extra_targets)
-        )
+    print(f"Fanout for monitor '{monitor.name}': {len(monitor_requests)} target requests")
 
-    for state_code, district in targets:
-        label = f"{state_code}-{district}"
-        print(f"Checking {label}...")
+    for request in monitor_requests:
+        if request.query in scrape_errors:
+            error_type, error_message = scrape_errors[request.query]
+            errors.append((request.label, error_type, error_message))
+            print(f"  {request.label}: fanout error {error_type}: {error_message}")
+            continue
 
-        try:
-            records = check_target_records(
-                browser,
-                direct_scraper,
-                direct_index_html,
-                state_code,
-                district,
-                backend=backend,
-                categories=categories,
-                deadline=deadline,
-            )
-            all_results.append((label, records))
-            print(f"  Records extracted: {len(records)}")
-        except Exception as e:
-            if backend == DIRECT_WITH_RETRIES_BACKEND:
-                raise
-            errors.append((label, type(e).__name__, str(e)))
-            print(f"  Error after retries: {type(e).__name__}: {e}")
+        records = scraped_results.get(request.query, [])
+        all_results.append((request.label, records))
+        print(f"  {request.label}: fanout records={len(records)}")
 
     new_results = compare_current_records(state, monitor.name, all_results)
     new_count = sum(len(records) for _, records in new_results)
+    current_count = sum(len(records) for _, records in all_results)
+    print(f"Records for monitor '{monitor.name}': {current_count}")
     print(f"New records since previous state for monitor '{monitor.name}': {new_count}")
 
     updated_state = update_state(state, monitor.name, all_results)
@@ -250,6 +344,44 @@ def run_monitor(
 
     print("DRY_RUN enabled; state not saved.")
     return state
+
+
+def run_monitor(
+    browser,
+    monitor,
+    state,
+    mode=DAILY_MODE,
+    persist_state=True,
+    backend=PLAYWRIGHT_BACKEND,
+    direct_scraper=None,
+    direct_index_html=None,
+    extra_targets=(),
+    deadline=None,
+):
+    requests = build_monitor_scrape_requests(
+        [monitor],
+        mode=mode,
+        backend=backend,
+        extra_targets=extra_targets,
+    )
+    queries = unique_scrape_queries(requests)
+    results, errors = execute_scrape_plan(
+        queries,
+        browser,
+        backend=backend,
+        direct_scraper=direct_scraper,
+        direct_index_html=direct_index_html,
+        deadline=deadline,
+    )
+    return run_monitor_from_scraped(
+        monitor,
+        state,
+        requests_for_monitor(requests, monitor.name),
+        results,
+        errors,
+        mode=mode,
+        persist_state=persist_state,
+    )
 
 
 def run(mode=DAILY_MODE):
@@ -308,19 +440,33 @@ def run(mode=DAILY_MODE):
                     f"{type(exc).__name__}: {exc}"
                 )
 
+    monitor_requests = build_monitor_scrape_requests(
+        enabled_monitors,
+        mode=mode,
+        backend=active_backend,
+        extra_targets=NOTIFY_EXTRA_TARGETS if mode == NOTIFY_MODE else (),
+    )
+    scrape_queries = unique_scrape_queries(monitor_requests)
+    log_scrape_plan(MONITORS, enabled_monitors, monitor_requests, scrape_queries)
+
     if active_backend in {DIRECT_BACKEND, DIRECT_WITH_RETRIES_BACKEND}:
+        scraped_results, scrape_errors = execute_scrape_plan(
+            scrape_queries,
+            None,
+            backend=active_backend,
+            direct_scraper=direct_scraper,
+            direct_index_html=direct_index_html,
+            deadline=deadline,
+        )
         for monitor in enabled_monitors:
-            state = run_monitor(
-                None,
+            state = run_monitor_from_scraped(
                 monitor,
                 state,
+                requests_for_monitor(monitor_requests, monitor.name),
+                scraped_results,
+                scrape_errors,
                 mode=mode,
                 persist_state=not DRY_RUN,
-                backend=active_backend,
-                direct_scraper=direct_scraper,
-                direct_index_html=direct_index_html,
-                extra_targets=NOTIFY_EXTRA_TARGETS if mode == NOTIFY_MODE else (),
-                deadline=deadline,
             )
         return
 
@@ -328,18 +474,23 @@ def run(mode=DAILY_MODE):
         browser = p.chromium.launch(headless=HEADLESS)
 
         try:
+            scraped_results, scrape_errors = execute_scrape_plan(
+                scrape_queries,
+                browser,
+                backend=active_backend,
+                direct_scraper=direct_scraper,
+                direct_index_html=direct_index_html,
+                deadline=deadline,
+            )
             for monitor in enabled_monitors:
-                state = run_monitor(
-                    browser,
+                state = run_monitor_from_scraped(
                     monitor,
                     state,
+                    requests_for_monitor(monitor_requests, monitor.name),
+                    scraped_results,
+                    scrape_errors,
                     mode=mode,
                     persist_state=not DRY_RUN,
-                    backend=active_backend,
-                    direct_scraper=direct_scraper,
-                    direct_index_html=direct_index_html,
-                    extra_targets=NOTIFY_EXTRA_TARGETS if mode == NOTIFY_MODE else (),
-                    deadline=deadline,
                 )
         finally:
             browser.close()

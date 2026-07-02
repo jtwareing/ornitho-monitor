@@ -372,6 +372,179 @@ class MonitorProfileTests(unittest.TestCase):
         self.assertIn("NI-WTM Bird", simon_report)
         self.assertIn("NI-WTM Bird", multi_report)
 
+    def test_run_deduplicates_overlapping_direct_scrape_queries_and_fans_out(self):
+        install_dependency_stubs()
+        import config
+        import ornitho.main as main
+        from ornitho.state import load_state
+
+        record = {
+            "date": "Saturday, June 27th, 2026",
+            "location": "Shared Marsh",
+            "count": "1",
+            "species": "Shared Bird",
+            "scientific": "Avis communis",
+            "detail": "",
+        }
+        sent = []
+        scrape_calls = []
+
+        class FakeResult:
+            records = [record]
+
+            class stats:
+                request_count = 1
+                pages_fetched = 1
+                records_parsed = 1
+                categories = ("rare", "veryrare")
+
+        class FakeDirectScraper:
+            def __init__(self, *_args, **_kwargs):
+                return None
+
+            def fetch_text(self, _url):
+                return "<html></html>"
+
+            def check_target(self, target, index_html=None, categories=()):
+                scrape_calls.append((target, tuple(categories)))
+                return FakeResult()
+
+        def fake_send_email(report, dry_run=False, email_to=None, subject=None):
+            sent.append((email_to, report, subject))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_out = main.OUT
+            original_state_path = main.STATE_PATH
+            original_dry_run = main.DRY_RUN
+            original_backend = main.SCRAPER_BACKEND
+            original_monitors = main.MONITORS
+            original_direct_scraper = main.DirectOrnithoScraper
+            original_send = main.send_email
+            try:
+                state_path = Path(tmpdir, "state.json")
+                main.OUT = Path(tmpdir)
+                main.STATE_PATH = state_path
+                main.DRY_RUN = False
+                main.SCRAPER_BACKEND = main.DIRECT_BACKEND
+                main.MONITORS = [
+                    config.Monitor(
+                        "default",
+                        "default@example.test",
+                        [("HB", "HB")],
+                        categories={"daily": ("rare",), "notify": ("rare", "veryrare")},
+                    ),
+                    config.Monitor(
+                        "Simon",
+                        "simon@example.test",
+                        [("HB", "HB")],
+                        categories={"daily": ("rare",), "notify": ("rare", "veryrare")},
+                    ),
+                ]
+                main.DirectOrnithoScraper = FakeDirectScraper
+                main.send_email = fake_send_email
+
+                main.run(mode=main.NOTIFY_MODE)
+                saved_state = load_state(state_path)
+                default_report = Path(tmpdir, "default_report.txt").read_text(encoding="utf-8")
+                simon_report = Path(tmpdir, "Simon_report.txt").read_text(encoding="utf-8")
+            finally:
+                main.OUT = original_out
+                main.STATE_PATH = original_state_path
+                main.DRY_RUN = original_dry_run
+                main.SCRAPER_BACKEND = original_backend
+                main.MONITORS = original_monitors
+                main.DirectOrnithoScraper = original_direct_scraper
+                main.send_email = original_send
+
+        self.assertEqual(scrape_calls, [(("HB", "HB"), ("rare", "veryrare"))])
+        self.assertEqual(
+            [recipient for recipient, _report, _subject in sent],
+            ["default@example.test", "simon@example.test"],
+        )
+        self.assertIn("Shared Bird", default_report)
+        self.assertIn("Shared Bird", simon_report)
+        self.assertEqual(set(saved_state["monitors"]), {"default", "Simon"})
+        self.assertIn("HB-HB", saved_state["monitors"]["default"]["targets"])
+        self.assertIn("HB-HB", saved_state["monitors"]["Simon"]["targets"])
+
+    def test_per_monitor_categories_create_distinct_scrape_queries(self):
+        install_dependency_stubs()
+        import config
+        import ornitho.main as main
+
+        scrape_calls = []
+
+        class FakeResult:
+            records = []
+
+            class stats:
+                request_count = 1
+                pages_fetched = 1
+                records_parsed = 0
+                categories = ("rare",)
+
+        class FakeDirectScraper:
+            def __init__(self, *_args, **_kwargs):
+                return None
+
+            def fetch_text(self, _url):
+                return "<html></html>"
+
+            def check_target(self, target, index_html=None, categories=()):
+                scrape_calls.append((target, tuple(categories)))
+                return FakeResult()
+
+        def fake_send_email(*_args, **_kwargs):
+            return None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_out = main.OUT
+            original_state_path = main.STATE_PATH
+            original_dry_run = main.DRY_RUN
+            original_backend = main.SCRAPER_BACKEND
+            original_monitors = main.MONITORS
+            original_direct_scraper = main.DirectOrnithoScraper
+            original_send = main.send_email
+            try:
+                main.OUT = Path(tmpdir)
+                main.STATE_PATH = Path(tmpdir, "state.json")
+                main.DRY_RUN = True
+                main.SCRAPER_BACKEND = main.DIRECT_BACKEND
+                main.MONITORS = [
+                    config.Monitor(
+                        "rare-only",
+                        "rare@example.test",
+                        [("HB", "HB")],
+                        categories={"daily": ("rare",), "notify": ("rare",)},
+                    ),
+                    config.Monitor(
+                        "rare-veryrare",
+                        "both@example.test",
+                        [("HB", "HB")],
+                        categories={"daily": ("rare",), "notify": ("rare", "veryrare")},
+                    ),
+                ]
+                main.DirectOrnithoScraper = FakeDirectScraper
+                main.send_email = fake_send_email
+
+                main.run(mode=main.NOTIFY_MODE)
+            finally:
+                main.OUT = original_out
+                main.STATE_PATH = original_state_path
+                main.DRY_RUN = original_dry_run
+                main.SCRAPER_BACKEND = original_backend
+                main.MONITORS = original_monitors
+                main.DirectOrnithoScraper = original_direct_scraper
+                main.send_email = original_send
+
+        self.assertEqual(
+            scrape_calls,
+            [
+                (("HB", "HB"), ("rare",)),
+                (("HB", "HB"), ("rare", "veryrare")),
+            ],
+        )
+
     def test_direct_backend_uses_direct_scraper_without_playwright_retry(self):
         install_dependency_stubs()
         import ornitho.main as main
