@@ -38,14 +38,20 @@ class MonitorProfileTests(unittest.TestCase):
 
         self.assertEqual(len(config.MONITORS), 2)
         self.assertEqual(config.MONITORS[0].name, "default")
+        self.assertTrue(config.MONITORS[0].enabled)
         self.assertEqual(config.MONITORS[0].email_to, "birds@example.test")
         self.assertEqual(config.MONITORS[0].targets, config.TARGETS)
+        self.assertEqual(config.MONITORS[0].categories["daily"], ("rare",))
+        self.assertEqual(config.MONITORS[0].categories["notify"], ("rare", "veryrare"))
         self.assertEqual(config.MONITORS[1].name, "Simon")
+        self.assertTrue(config.MONITORS[1].enabled)
         self.assertEqual(config.MONITORS[1].email_to, "sim.kiese@gmail.com")
         self.assertEqual(
             config.MONITORS[1].targets,
             [("NI", "WTM"), ("NI", "AUR"), ("NI", "FRI"), ("BE", "B")],
         )
+        self.assertEqual(config.MONITORS[1].categories["daily"], ("rare",))
+        self.assertEqual(config.MONITORS[1].categories["notify"], ("rare", "veryrare"))
         self.assertEqual(config.SCRAPER_BACKEND, "playwright")
         self.assertEqual(config.NOTIFY_EXTRA_TARGETS, [])
 
@@ -61,7 +67,22 @@ class MonitorProfileTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir, "monitors.json")
-            path.write_text('{"monitors": [{"name": "bad", "targets": ["NI-OHZ"]}]}', encoding="utf-8")
+            path.write_text(
+                """
+                {
+                  "schema_version": 1,
+                  "monitors": [
+                    {
+                      "name": "bad",
+                      "enabled": true,
+                      "categories": {"daily": ["rare"], "notify": ["rare"]},
+                      "targets": ["NI-OHZ"]
+                    }
+                  ]
+                }
+                """,
+                encoding="utf-8",
+            )
 
             with self.assertRaisesRegex(
                 config.MonitorConfigError,
@@ -77,9 +98,22 @@ class MonitorProfileTests(unittest.TestCase):
             path.write_text(
                 """
                 {
+                  "schema_version": 1,
                   "monitors": [
-                    {"name": "same", "email_to": "a@example.test", "targets": ["NI-OHZ"]},
-                    {"name": "same", "email_to": "b@example.test", "targets": ["NI-VER"]}
+                    {
+                      "name": "same",
+                      "enabled": true,
+                      "email_to": "a@example.test",
+                      "categories": {"daily": ["rare"], "notify": ["rare"]},
+                      "targets": ["NI-OHZ"]
+                    },
+                    {
+                      "name": "same",
+                      "enabled": true,
+                      "email_to": "b@example.test",
+                      "categories": {"daily": ["rare"], "notify": ["rare"]},
+                      "targets": ["NI-VER"]
+                    }
                   ]
                 }
                 """,
@@ -87,6 +121,42 @@ class MonitorProfileTests(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(config.MonitorConfigError, "unique"):
+                config.load_monitors(path)
+
+    def test_missing_schema_version_is_rejected(self):
+        import config
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir, "monitors.json")
+            path.write_text('{"monitors": []}', encoding="utf-8")
+
+            with self.assertRaisesRegex(config.MonitorConfigError, "schema_version"):
+                config.load_monitors(path)
+
+    def test_invalid_monitor_category_is_rejected(self):
+        import config
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir, "monitors.json")
+            path.write_text(
+                """
+                {
+                  "schema_version": 1,
+                  "monitors": [
+                    {
+                      "name": "bad",
+                      "enabled": true,
+                      "email_to": "bad@example.test",
+                      "categories": {"daily": ["rare"], "notify": ["mega"]},
+                      "targets": ["NI-OHZ"]
+                    }
+                  ]
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(config.MonitorConfigError, "unsupported category"):
                 config.load_monitors(path)
 
     def test_run_monitor_uses_monitor_targets_and_recipient(self):
@@ -346,6 +416,129 @@ class MonitorProfileTests(unittest.TestCase):
 
         self.assertEqual(result, records)
         self.assertEqual(scraper.calls[0][0], ("HB", "HB"))
+
+    def test_run_monitor_passes_monitor_mode_categories_to_direct_scraper(self):
+        install_dependency_stubs()
+        import config
+        import ornitho.main as main
+        from ornitho.state import empty_state
+
+        categories_seen = []
+
+        class FakeResult:
+            records = []
+
+            class stats:
+                request_count = 1
+                pages_fetched = 1
+                records_parsed = 0
+                categories = ("rare", "veryrare")
+
+        class FakeDirectScraper:
+            def check_target(self, target, index_html=None, categories=()):
+                categories_seen.append(tuple(categories))
+                return FakeResult()
+
+        def fake_send_email(report, dry_run=False, email_to=None, subject=None):
+            return None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_out = main.OUT
+            original_dry_run = main.DRY_RUN
+            original_send = main.send_email
+            try:
+                main.OUT = Path(tmpdir)
+                main.DRY_RUN = True
+                main.send_email = fake_send_email
+
+                monitor = config.Monitor(
+                    name="test",
+                    email_to="profile@example.test",
+                    targets=[("HB", "HB")],
+                    categories={"daily": ("rare",), "notify": ("rare", "veryrare")},
+                )
+                main.run_monitor(
+                    None,
+                    monitor,
+                    empty_state(),
+                    mode=main.NOTIFY_MODE,
+                    persist_state=False,
+                    backend=main.DIRECT_BACKEND,
+                    direct_scraper=FakeDirectScraper(),
+                    direct_index_html="<html></html>",
+                )
+            finally:
+                main.OUT = original_out
+                main.DRY_RUN = original_dry_run
+                main.send_email = original_send
+
+        self.assertEqual(categories_seen, [("rare", "veryrare")])
+
+    def test_disabled_monitors_are_skipped_before_scraping_or_email(self):
+        install_dependency_stubs()
+        import config
+        import ornitho.main as main
+
+        class FakeBrowser:
+            def close(self):
+                return None
+
+        class FakeChromium:
+            def launch(self, headless=False):
+                return FakeBrowser()
+
+        class FakePlaywright:
+            chromium = FakeChromium()
+
+        class FakePlaywrightContext:
+            def __enter__(self):
+                return FakePlaywright()
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        def fail_check_target_with_retry(*_args, **_kwargs):
+            raise AssertionError("disabled monitor should not scrape")
+
+        def fail_send_email(*_args, **_kwargs):
+            raise AssertionError("disabled monitor should not email")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_out = main.OUT
+            original_state_path = main.STATE_PATH
+            original_dry_run = main.DRY_RUN
+            original_backend = main.SCRAPER_BACKEND
+            original_monitors = main.MONITORS
+            original_sync_playwright = main.sync_playwright
+            original_check = main.check_target_with_retry
+            original_send = main.send_email
+            try:
+                main.OUT = Path(tmpdir)
+                main.STATE_PATH = Path(tmpdir, "state.json")
+                main.DRY_RUN = True
+                main.SCRAPER_BACKEND = main.PLAYWRIGHT_BACKEND
+                main.MONITORS = [
+                    config.Monitor(
+                        "disabled",
+                        "disabled@example.test",
+                        [("HB", "HB")],
+                        enabled=False,
+                    )
+                ]
+                main.sync_playwright = lambda: FakePlaywrightContext()
+                main.check_target_with_retry = fail_check_target_with_retry
+                main.send_email = fail_send_email
+
+                main.run(mode=main.NOTIFY_MODE)
+            finally:
+                main.OUT = original_out
+                main.STATE_PATH = original_state_path
+                main.DRY_RUN = original_dry_run
+                main.SCRAPER_BACKEND = original_backend
+                main.MONITORS = original_monitors
+                main.sync_playwright = original_sync_playwright
+                main.check_target_with_retry = original_check
+                main.send_email = original_send
 
     def test_direct_with_fallback_uses_playwright_when_direct_fails(self):
         install_dependency_stubs()

@@ -14,8 +14,11 @@ The scraper is deliberately separate from reporting, email, and state handling:
 
 Monitors
 A monitor is configured in monitors.json with:
+- schema_version at the top level
 - name
+- enabled
 - email_to or email_to_env
+- categories
 - targets
 
 The default monitor uses EMAIL_TO from the environment and these targets:
@@ -32,11 +35,17 @@ Add another monitor object to monitors.json with a unique name, recipient, and t
 Example:
 {
   "name": "bremen",
+  "enabled": true,
   "email_to": "recipient@example.com",
+  "categories": {
+    "daily": ["rare"],
+    "notify": ["rare", "veryrare"]
+  },
   "targets": ["HB-HB"]
 }
 
 Each monitor has independent state history, so the same record can be new for one monitor and already seen for another.
+Disabled monitors are skipped before scraping or email sending.
 
 Adding regions
 Add a tuple to a monitor's targets:
@@ -88,13 +97,7 @@ SCRAPER_BACKEND=direct
 Temporary fallback mode tries direct HTTP first and falls back to Playwright if direct target resolution or fetching fails:
 SCRAPER_BACKEND=direct_with_fallback
 
-Category filters default to rare records only:
-ORNITHO_CATEGORIES=rare
-
-To include both rare and very rare records:
-ORNITHO_CATEGORIES=rare,veryrare
-
-The GitHub daily and hourly workflows read SCRAPER_BACKEND and ORNITHO_CATEGORIES from repository variables, defaulting to Playwright and rare. This allows a production switch without editing code or the Cloudflare Worker.
+Category filters are configured per monitor in monitors.json. Daily and notification modes can use different category lists so current behaviour is preserved while allowing future monitors to choose their own rarity levels.
 
 Persistent state
 The state file is tracked at:
@@ -136,7 +139,6 @@ Ornitho Hourly Notifications
 - production hourly triggering should be done by the external scheduler described below
 - uses Notification mode
 - currently uses SCRAPER_BACKEND=direct_with_fallback during the cautious direct HTTP rollout
-- currently uses ORNITHO_CATEGORIES=rare,veryrare during the cautious direct HTTP rollout
 - supports manual dry-run
 - commits state only after successful non-dry-run runs
 

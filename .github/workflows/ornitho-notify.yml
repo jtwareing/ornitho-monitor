@@ -64,11 +64,9 @@ jobs:
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'False' }}
           SCRAPER_BACKEND: direct_with_fallback
-          ORNITHO_CATEGORIES: rare,veryrare
         run: |
           echo "dry_run=${DRY_RUN}"
           echo "scraper_backend=${SCRAPER_BACKEND}"
-          echo "ornitho_categories=${ORNITHO_CATEGORIES}"
           echo "Python command: xvfb-run python -m ornitho.main --mode notify"
           python - <<'PY'
           import os

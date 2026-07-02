@@ -50,7 +50,7 @@ class WorkflowTests(unittest.TestCase):
         daily = self.workflow_text("ornitho.yml")
 
         self.assertIn("SCRAPER_BACKEND: ${{ vars.SCRAPER_BACKEND || 'playwright' }}", daily)
-        self.assertIn("ORNITHO_CATEGORIES: ${{ vars.ORNITHO_CATEGORIES || 'rare' }}", daily)
+        self.assertNotIn("ORNITHO_CATEGORIES:", daily)
         self.assertIn('echo "scraper_backend=${SCRAPER_BACKEND}"', daily)
 
     def test_hourly_workflow_uses_direct_with_fallback_without_observer_target(self):
@@ -58,7 +58,7 @@ class WorkflowTests(unittest.TestCase):
         daily = self.workflow_text("ornitho.yml")
 
         self.assertIn("SCRAPER_BACKEND: direct_with_fallback", hourly)
-        self.assertIn("ORNITHO_CATEGORIES: rare,veryrare", hourly)
+        self.assertNotIn("ORNITHO_CATEGORIES:", hourly)
         self.assertNotIn("ORNITHO_NOTIFY_EXTRA_TARGETS", hourly)
         self.assertNotIn("SH-NF", hourly)
         self.assertNotIn("ORNITHO_NOTIFY_EXTRA_TARGETS", daily)

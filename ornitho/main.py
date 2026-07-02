@@ -11,7 +11,6 @@ from config import (
     DRY_RUN,
     STATE_PATH,
     SCRAPER_BACKEND,
-    ORNITHO_CATEGORIES,
     NOTIFY_EXTRA_TARGETS,
 )
 from emailer import send_email
@@ -48,13 +47,14 @@ def check_target_records(
     state_code,
     district,
     backend=PLAYWRIGHT_BACKEND,
+    categories=("rare",),
 ):
     if backend in {DIRECT_BACKEND, DIRECT_WITH_FALLBACK_BACKEND}:
         try:
             result = direct_scraper.check_target(
                 (state_code, district),
                 index_html=direct_index_html,
-                categories=ORNITHO_CATEGORIES,
+                categories=categories,
             )
             print(
                 "  Direct HTTP stats: "
@@ -92,6 +92,8 @@ def run_monitor(
     all_results = []
     errors = []
     targets = list(monitor.targets)
+    categories = monitor.categories[mode]
+    print(f"Monitor '{monitor.name}' categories for {mode}: {','.join(categories)}")
     if extra_targets:
         targets.extend(extra_targets)
         print(
@@ -111,6 +113,7 @@ def run_monitor(
                 state_code,
                 district,
                 backend=backend,
+                categories=categories,
             )
             all_results.append((label, records))
             print(f"  Records extracted: {len(records)}")
@@ -160,13 +163,21 @@ def run(mode=DAILY_MODE):
     print(f"State loaded from {STATE_PATH}.")
     print(f"Mode: {mode}")
     print(f"Scraper backend: {SCRAPER_BACKEND}")
-    if SCRAPER_BACKEND in {DIRECT_BACKEND, DIRECT_WITH_FALLBACK_BACKEND}:
-        print(f"Ornitho categories: {','.join(ORNITHO_CATEGORIES)}")
     if mode == NOTIFY_MODE and NOTIFY_EXTRA_TARGETS:
         print(
             "Notify extra targets: "
             + ", ".join(f"{state}-{district}" for state, district in NOTIFY_EXTRA_TARGETS)
         )
+
+    enabled_monitors = []
+    for monitor in MONITORS:
+        if monitor.enabled:
+            enabled_monitors.append(monitor)
+        else:
+            print(f"Monitor '{monitor.name}' disabled; skipping.")
+    if not enabled_monitors:
+        print("No enabled monitors; nothing to do.")
+        return
 
     active_backend = SCRAPER_BACKEND
     direct_scraper = None
@@ -187,7 +198,7 @@ def run(mode=DAILY_MODE):
             )
 
     if active_backend == DIRECT_BACKEND:
-        for monitor in MONITORS:
+        for monitor in enabled_monitors:
             state = run_monitor(
                 None,
                 monitor,
@@ -205,7 +216,7 @@ def run(mode=DAILY_MODE):
         browser = p.chromium.launch(headless=HEADLESS)
 
         try:
-            for monitor in MONITORS:
+            for monitor in enabled_monitors:
                 state = run_monitor(
                     browser,
                     monitor,

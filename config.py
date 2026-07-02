@@ -1,9 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
+
+
+MONITORS_SCHEMA_VERSION = 1
+CATEGORY_KEYS = ("never", "veryrare", "rare", "unusual", "escaped", "common", "verycommon")
+MODE_KEYS = ("daily", "notify")
 
 
 class MonitorConfigError(RuntimeError):
@@ -36,6 +41,10 @@ class Monitor:
     name: str
     email_to: str | None
     targets: list[tuple[str, str]]
+    enabled: bool = True
+    categories: dict[str, tuple[str, ...]] = field(
+        default_factory=lambda: {"daily": ("rare",), "notify": ("rare",)}
+    )
 
 
 OUT = Path("output")
@@ -95,11 +104,54 @@ def parse_monitor(raw_monitor: object, index: int) -> Monitor:
         for target_index, raw_target in enumerate(raw_targets)
     ]
 
-    return Monitor(name=name, email_to=resolve_email_to(raw_monitor, context), targets=targets)
+    enabled = raw_monitor.get("enabled")
+    if not isinstance(enabled, bool):
+        raise MonitorConfigError(f"{context}.enabled must be true or false")
+
+    return Monitor(
+        name=name,
+        email_to=resolve_email_to(raw_monitor, context),
+        targets=targets,
+        enabled=enabled,
+        categories=parse_monitor_categories(raw_monitor.get("categories"), context),
+    )
+
+
+def parse_monitor_categories(raw_categories: object, context: str) -> dict[str, tuple[str, ...]]:
+    if not isinstance(raw_categories, dict):
+        raise MonitorConfigError(f"{context}.categories must be an object with daily and notify lists")
+
+    categories: dict[str, tuple[str, ...]] = {}
+    for mode in MODE_KEYS:
+        raw_values = raw_categories.get(mode)
+        if not isinstance(raw_values, list) or not raw_values:
+            raise MonitorConfigError(f"{context}.categories.{mode} must be a non-empty list")
+
+        normalized = []
+        for value_index, value in enumerate(raw_values):
+            if not isinstance(value, str) or not value.strip():
+                raise MonitorConfigError(
+                    f"{context}.categories.{mode}[{value_index}] must be a non-empty string"
+                )
+            category = value.strip().lower().replace("-", "")
+            if category not in CATEGORY_KEYS:
+                raise MonitorConfigError(
+                    f"{context}.categories.{mode}[{value_index}] unsupported category: {value!r}"
+                )
+            if category not in normalized:
+                normalized.append(category)
+        categories[mode] = tuple(normalized)
+
+    return categories
 
 
 def load_monitors(path: Path = MONITORS_CONFIG_PATH) -> list[Monitor]:
     raw_config = load_json_config(path)
+    if raw_config.get("schema_version") != MONITORS_SCHEMA_VERSION:
+        raise MonitorConfigError(
+            f"Unsupported monitor config schema_version: {raw_config.get('schema_version')}"
+        )
+
     raw_monitors = raw_config.get("monitors")
     if not isinstance(raw_monitors, list) or not raw_monitors:
         raise MonitorConfigError("Monitor configuration must define a non-empty monitors list")
@@ -120,9 +172,4 @@ WAIT_SECONDS = 20
 HEADLESS = False
 DRY_RUN = os.environ.get("DRY_RUN", "False").strip().lower() in {"1", "true", "yes", "on"}
 SCRAPER_BACKEND = os.environ.get("SCRAPER_BACKEND", "playwright").strip().lower()
-ORNITHO_CATEGORIES = tuple(
-    category.strip().lower().replace("-", "")
-    for category in os.environ.get("ORNITHO_CATEGORIES", "rare").split(",")
-    if category.strip()
-)
 NOTIFY_EXTRA_TARGETS = parse_targets(os.environ.get("ORNITHO_NOTIFY_EXTRA_TARGETS", ""))

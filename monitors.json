@@ -1,8 +1,19 @@
 {
+  "schema_version": 1,
   "monitors": [
     {
       "name": "default",
+      "enabled": true,
       "email_to_env": "EMAIL_TO",
+      "categories": {
+        "daily": [
+          "rare"
+        ],
+        "notify": [
+          "rare",
+          "veryrare"
+        ]
+      },
       "targets": [
         "NI-OHZ",
         "NI-VER",
@@ -14,7 +25,17 @@
     },
     {
       "name": "Simon",
+      "enabled": true,
       "email_to": "sim.kiese@gmail.com",
+      "categories": {
+        "daily": [
+          "rare"
+        ],
+        "notify": [
+          "rare",
+          "veryrare"
+        ]
+      },
       "targets": [
         "NI-WTM",
         "NI-AUR",
