@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 import json
 import os
 from pathlib import Path
@@ -49,12 +50,31 @@ def env_int(name: str, default: int) -> int:
     return value
 
 
+def env_bool(name: str, default: bool = False) -> bool:
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def parse_pause_until(value: object, context: str) -> date | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise MonitorConfigError(f"{context}.pause_until must be a YYYY-MM-DD string")
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError as exc:
+        raise MonitorConfigError(f"{context}.pause_until must be a valid YYYY-MM-DD date") from exc
+
+
 @dataclass(frozen=True)
 class Monitor:
     name: str
     email_to: str | None
     targets: list[tuple[str, str]]
     enabled: bool = True
+    pause_until: date | None = None
     categories: dict[str, tuple[str, ...]] = field(
         default_factory=lambda: {"daily": ("rare",), "notify": ("rare",)}
     )
@@ -126,6 +146,7 @@ def parse_monitor(raw_monitor: object, index: int) -> Monitor:
         email_to=resolve_email_to(raw_monitor, context),
         targets=targets,
         enabled=enabled,
+        pause_until=parse_pause_until(raw_monitor.get("pause_until"), context),
         categories=parse_monitor_categories(raw_monitor.get("categories"), context),
     )
 
@@ -186,6 +207,7 @@ HEADLESS = False
 DRY_RUN = os.environ.get("DRY_RUN", "False").strip().lower() in {"1", "true", "yes", "on"}
 SCRAPER_BACKEND = os.environ.get("SCRAPER_BACKEND", "playwright").strip().lower()
 OPERATIONS_EMAIL = os.environ.get("OPERATIONS_EMAIL", "").strip()
+MONITORING_DISABLED = env_bool("ORNITHO_MONITORING_DISABLED", False)
 NOTIFY_EXTRA_TARGETS = parse_targets(os.environ.get("ORNITHO_NOTIFY_EXTRA_TARGETS", ""))
 DIRECT_HTTP_TIMEOUT_SECONDS = env_int("DIRECT_HTTP_TIMEOUT_SECONDS", 30)
 DIRECT_SETUP_ATTEMPTS = env_int("DIRECT_SETUP_ATTEMPTS", 2)

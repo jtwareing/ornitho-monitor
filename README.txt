@@ -22,6 +22,7 @@ A monitor is configured in monitors.json with:
 - schema_version at the top level
 - name
 - enabled
+- pause_until, optional YYYY-MM-DD
 - email_to or email_to_env
 - categories
 - targets
@@ -51,6 +52,8 @@ Example:
 
 Each monitor has independent state history, so the same record can be new for one monitor and already seen for another.
 Disabled monitors are skipped before scraping or email sending.
+Paused monitors are skipped before scraping or email sending until the end of
+their pause_until date.
 
 Adding regions
 Add a tuple to a monitor's targets:
@@ -105,7 +108,7 @@ SCRAPER_BACKEND=direct_with_fallback
 Hourly notification production uses bounded direct HTTP retries without automatic Playwright fallback:
 SCRAPER_BACKEND=direct_with_retries
 
-The bounded direct backend uses short request timeouts, limited setup retries, and a total runtime budget. If direct HTTP still fails, the workflow fails visibly, uploads the output artifact, sends no user email for that failed run, and does not commit state. Playwright remains available for manual diagnostic and shadow comparison workflows.
+The bounded direct backend uses short request timeouts, limited setup retries, and a total runtime budget. If direct HTTP still fails with a known bounded scraper/runtime failure, the workflow uploads the output artifact, marks run_summary.json as HANDLED_FAILURE, sends no user email, and does not commit state. Playwright remains available for manual diagnostic and shadow comparison workflows.
 
 Category filters are configured per monitor in monitors.json. Daily and notification modes can use different category lists so current behaviour is preserved while allowing future monitors to choose their own rarity levels.
 
@@ -161,6 +164,39 @@ Operational alert emails are separate from bird notification emails. Set
 OPERATIONS_EMAIL to send failure alerts to maintainers. If OPERATIONS_EMAIL is
 unset, the monitor records that no operational alert was sent and does not fall
 back to EMAIL_TO or any monitor recipient.
+
+Operational controls
+Disable all user monitoring:
+- set the repository variable ORNITHO_MONITORING_DISABLED to true
+- hourly runs will skip all monitors before scraping
+- no user notification emails are sent
+- no state is saved
+- operational alerts still work for unexpected failures
+
+Re-enable all user monitoring:
+- set ORNITHO_MONITORING_DISABLED to false or remove the repository variable
+
+Pause one monitor:
+- add pause_until to that monitor in monitors.json
+- format: YYYY-MM-DD
+- example: "pause_until": "2026-07-15"
+- the monitor is skipped while today's Berlin date is before or equal to pause_until
+
+Re-enable one paused monitor:
+- remove pause_until from that monitor, or set it to a date before today
+
+Disable one monitor:
+- set that monitor's enabled field to false in monitors.json
+
+Re-enable one disabled monitor:
+- set enabled to true
+
+Rollback procedure:
+1. Find the previous working commit in GitHub Actions or with git log.
+2. Revert the bad commit with git revert <commit-sha>.
+3. Push main.
+4. Trigger Ornitho Hourly Notifications with dry_run=true.
+5. Inspect run_summary.json and logs before returning to production.
 
 Ornitho Notify Test
 - file: .github/workflows/ornitho-notify-test.yml
@@ -262,7 +298,9 @@ Required GitHub secrets
 - EMAIL_FROM
 - EMAIL_TO
 - EMAIL_PASSWORD
-- OPERATIONS_EMAIL
+
+Optional GitHub secrets
+- OPERATIONS_EMAIL, recommended for operational failure alerts
 
 Local verification
 Run unit tests:

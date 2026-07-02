@@ -62,6 +62,7 @@ jobs:
           OPERATIONS_EMAIL: ${{ secrets.OPERATIONS_EMAIL }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'False' }}
           SCRAPER_BACKEND: direct_with_retries
+          ORNITHO_MONITORING_DISABLED: ${{ vars.ORNITHO_MONITORING_DISABLED || 'false' }}
           DIRECT_HTTP_TIMEOUT_SECONDS: "30"
           DIRECT_SETUP_ATTEMPTS: "2"
           DIRECT_RETRY_BACKOFF_SECONDS: "5"
@@ -69,6 +70,7 @@ jobs:
         run: |
           echo "dry_run=${DRY_RUN}"
           echo "scraper_backend=${SCRAPER_BACKEND}"
+          echo "ornitho_monitoring_disabled=${ORNITHO_MONITORING_DISABLED}"
           echo "direct_http_timeout_seconds=${DIRECT_HTTP_TIMEOUT_SECONDS}"
           echo "direct_setup_attempts=${DIRECT_SETUP_ATTEMPTS}"
           echo "direct_retry_backoff_seconds=${DIRECT_RETRY_BACKOFF_SECONDS}"

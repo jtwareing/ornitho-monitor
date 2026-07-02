@@ -1,8 +1,9 @@
 import argparse
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import json
 import time
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from playwright.sync_api import sync_playwright
 
@@ -16,6 +17,7 @@ from config import (
     STATE_PATH,
     SCRAPER_BACKEND,
     OPERATIONS_EMAIL,
+    MONITORING_DISABLED,
     NOTIFY_EXTRA_TARGETS,
     DIRECT_HTTP_TIMEOUT_SECONDS,
     DIRECT_SETUP_ATTEMPTS,
@@ -96,6 +98,7 @@ def new_run_summary(mode):
         "monitors_loaded": len(MONITORS),
         "monitors_enabled": 0,
         "monitors_skipped": [],
+        "monitoring_disabled": MONITORING_DISABLED,
         "unique_scrape_queries_planned": 0,
         "planned_scrape_queries": [],
         "actual_scrape_queries_executed": 0,
@@ -148,7 +151,7 @@ def build_operations_alert(summary, failure_reason):
     lines = [
         "Ornitho monitor operational alert",
         "",
-        f"Status: FAILED",
+        f"Status: {summary['overall_run_status']}",
         f"Mode: {summary['mode']}",
         f"Backend: {summary['active_backend']}",
         f"Dry run: {summary['dry_run']}",
@@ -167,6 +170,47 @@ def build_operations_alert(summary, failure_reason):
         "No user bird-notification emails were sent for this failed run.",
     ]
     return "\n".join(lines)
+
+
+def skip_entry(monitor, reason):
+    return {"monitor": monitor.name, "reason": reason}
+
+
+def berlin_today():
+    try:
+        return datetime.now(ZoneInfo("Europe/Berlin")).date()
+    except ZoneInfoNotFoundError:
+        return date.today()
+
+
+def classify_monitors(monitors, today=None):
+    today = today or berlin_today()
+    enabled_monitors = []
+    skipped_monitors = []
+
+    if MONITORING_DISABLED:
+        for monitor in monitors:
+            skipped_monitors.append(skip_entry(monitor, "global monitoring disabled"))
+            print(f"Monitor '{monitor.name}' skipped; global monitoring is disabled.")
+        return enabled_monitors, skipped_monitors
+
+    for monitor in monitors:
+        if not monitor.enabled:
+            skipped_monitors.append(skip_entry(monitor, "disabled"))
+            print(f"Monitor '{monitor.name}' disabled; skipping.")
+            continue
+        if monitor.pause_until is not None and today <= monitor.pause_until:
+            skipped_monitors.append(
+                skip_entry(monitor, f"paused until {monitor.pause_until.isoformat()}")
+            )
+            print(
+                f"Monitor '{monitor.name}' paused until "
+                f"{monitor.pause_until.isoformat()}; skipping."
+            )
+            continue
+        enabled_monitors.append(monitor)
+
+    return enabled_monitors, skipped_monitors
 
 
 def send_operations_alert(summary, failure_reason):
@@ -337,7 +381,7 @@ def record_scrape_plan(summary, active_backend, enabled_monitors, skipped_monito
         return
     summary["active_backend"] = active_backend
     summary["monitors_enabled"] = len(enabled_monitors)
-    summary["monitors_skipped"] = [monitor.name for monitor in skipped_monitors]
+    summary["monitors_skipped"] = skipped_monitors
     summary["unique_scrape_queries_planned"] = len(queries)
     summary["planned_scrape_queries"] = [summary_query(query) for query in queries]
 
@@ -581,19 +625,15 @@ def run(mode=DAILY_MODE):
                 + ", ".join(f"{state}-{district}" for state, district in NOTIFY_EXTRA_TARGETS)
             )
 
-        enabled_monitors = []
-        skipped_monitors = []
-        for monitor in MONITORS:
-            if monitor.enabled:
-                enabled_monitors.append(monitor)
-            else:
-                skipped_monitors.append(monitor)
-                print(f"Monitor '{monitor.name}' disabled; skipping.")
+        enabled_monitors, skipped_monitors = classify_monitors(MONITORS)
         if not enabled_monitors:
             print("No enabled monitors; nothing to do.")
             summary["monitors_enabled"] = 0
-            summary["monitors_skipped"] = [monitor.name for monitor in skipped_monitors]
-            summary["state"]["skipped_reason"] = "no enabled monitors"
+            summary["monitors_skipped"] = skipped_monitors
+            if MONITORING_DISABLED:
+                summary["state"]["skipped_reason"] = "global monitoring disabled"
+            else:
+                summary["state"]["skipped_reason"] = "no enabled monitors"
             finish_run_summary(summary, run_started, "SUCCESS")
             write_run_summary(summary)
             return
@@ -717,6 +757,24 @@ def run(mode=DAILY_MODE):
 
         finish_run_summary(summary, run_started, "SUCCESS")
         write_run_summary(summary)
+    except DirectScraperRuntimeError as exc:
+        failure_reason = f"{type(exc).__name__}: {exc}"
+        if not summary["state"]["saved"]:
+            summary["state"]["skipped_reason"] = "run failed"
+        finish_run_summary(summary, run_started, "HANDLED_FAILURE", failure_reason)
+        try:
+            send_operations_alert(summary, failure_reason)
+        except Exception as alert_exc:
+            summary["emails"]["operations_alert_skipped_reason"] = (
+                f"operational alert failed: {type(alert_exc).__name__}: {alert_exc}"
+            )
+            print(
+                "Operational alert failed: "
+                f"{type(alert_exc).__name__}: {alert_exc}"
+            )
+        finally:
+            write_run_summary(summary)
+        return
     except Exception as exc:
         failure_reason = f"{type(exc).__name__}: {exc}"
         if not summary["state"]["saved"]:

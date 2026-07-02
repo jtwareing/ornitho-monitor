@@ -6,6 +6,7 @@ import sys
 import tempfile
 import types
 import unittest
+from datetime import date, timedelta
 
 
 def install_dependency_stubs():
@@ -158,6 +159,62 @@ class MonitorProfileTests(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(config.MonitorConfigError, "unsupported category"):
+                config.load_monitors(path)
+
+    def test_pause_until_loads_from_monitor_config(self):
+        import config
+
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir, "monitors.json")
+            path.write_text(
+                f"""
+                {{
+                  "schema_version": 1,
+                  "monitors": [
+                    {{
+                      "name": "paused",
+                      "enabled": true,
+                      "email_to": "paused@example.test",
+                      "pause_until": "{tomorrow}",
+                      "categories": {{"daily": ["rare"], "notify": ["rare"]}},
+                      "targets": ["HB-HB"]
+                    }}
+                  ]
+                }}
+                """,
+                encoding="utf-8",
+            )
+
+            monitors = config.load_monitors(path)
+
+        self.assertEqual(monitors[0].pause_until, date.fromisoformat(tomorrow))
+
+    def test_invalid_pause_until_is_rejected(self):
+        import config
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir, "monitors.json")
+            path.write_text(
+                """
+                {
+                  "schema_version": 1,
+                  "monitors": [
+                    {
+                      "name": "bad",
+                      "enabled": true,
+                      "email_to": "bad@example.test",
+                      "pause_until": "tomorrow",
+                      "categories": {"daily": ["rare"], "notify": ["rare"]},
+                      "targets": ["HB-HB"]
+                    }
+                  ]
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(config.MonitorConfigError, "pause_until"):
                 config.load_monitors(path)
 
     def test_run_monitor_uses_monitor_targets_and_recipient(self):
@@ -678,8 +735,7 @@ class MonitorProfileTests(unittest.TestCase):
                 main.DIRECT_RETRY_BACKOFF_SECONDS = 1
                 main.DIRECT_TOTAL_TIMEOUT_SECONDS = 5
 
-                with self.assertRaisesRegex(main.DirectScraperRuntimeError, "Direct HTTP setup failed"):
-                    main.run(mode=main.NOTIFY_MODE)
+                main.run(mode=main.NOTIFY_MODE)
 
                 summary = json.loads(Path(tmpdir, "run_summary.json").read_text(encoding="utf-8"))
                 failure = Path(tmpdir, "scrape_failure.txt").read_text(encoding="utf-8")
@@ -702,7 +758,7 @@ class MonitorProfileTests(unittest.TestCase):
         self.assertEqual(sent[0][2], "ops@example.test")
         self.assertEqual(sent[0][3], main.OPERATIONS_ALERT_SUBJECT)
         self.assertIn("No user bird-notification emails", sent[0][0])
-        self.assertEqual(summary["overall_run_status"], "FAILED")
+        self.assertEqual(summary["overall_run_status"], "HANDLED_FAILURE")
         self.assertEqual(summary["unique_scrape_queries_planned"], 1)
         self.assertEqual(summary["actual_scrape_queries_executed"], 0)
         self.assertEqual(len(summary["scrape_setup_attempts"]), 1)
@@ -712,6 +768,229 @@ class MonitorProfileTests(unittest.TestCase):
         self.assertFalse(summary["state"]["saved"])
         self.assertEqual(summary["state"]["skipped_reason"], "run failed")
         self.assertFalse(Path(tmpdir, "state.json").exists())
+
+    def test_paused_monitor_is_skipped_before_scraping_or_email(self):
+        install_dependency_stubs()
+        import config
+        import ornitho.main as main
+
+        def fail_direct_scraper(*_args, **_kwargs):
+            raise AssertionError("paused monitor should not initialize direct scraper")
+
+        def fail_send_email(*_args, **_kwargs):
+            raise AssertionError("paused monitor should not email")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_out = main.OUT
+            original_state_path = main.STATE_PATH
+            original_dry_run = main.DRY_RUN
+            original_backend = main.SCRAPER_BACKEND
+            original_monitors = main.MONITORS
+            original_direct_scraper = main.DirectOrnithoScraper
+            original_send = main.send_email
+            try:
+                main.OUT = Path(tmpdir)
+                main.STATE_PATH = Path(tmpdir, "state.json")
+                main.DRY_RUN = True
+                main.SCRAPER_BACKEND = main.DIRECT_BACKEND
+                main.MONITORS = [
+                    config.Monitor(
+                        "paused",
+                        "paused@example.test",
+                        [("HB", "HB")],
+                        pause_until=date.today() + timedelta(days=1),
+                    )
+                ]
+                main.DirectOrnithoScraper = fail_direct_scraper
+                main.send_email = fail_send_email
+
+                main.run(mode=main.NOTIFY_MODE)
+                summary = json.loads(Path(tmpdir, "run_summary.json").read_text(encoding="utf-8"))
+            finally:
+                main.OUT = original_out
+                main.STATE_PATH = original_state_path
+                main.DRY_RUN = original_dry_run
+                main.SCRAPER_BACKEND = original_backend
+                main.MONITORS = original_monitors
+                main.DirectOrnithoScraper = original_direct_scraper
+                main.send_email = original_send
+
+        self.assertEqual(summary["overall_run_status"], "SUCCESS")
+        self.assertEqual(summary["monitors_enabled"], 0)
+        self.assertEqual(summary["monitors_skipped"][0]["monitor"], "paused")
+        self.assertIn("paused until", summary["monitors_skipped"][0]["reason"])
+        self.assertFalse(summary["state"]["saved"])
+        self.assertFalse(Path(tmpdir, "state.json").exists())
+
+    def test_pause_until_yesterday_allows_monitor_to_run(self):
+        install_dependency_stubs()
+        import config
+        import ornitho.main as main
+
+        scrape_calls = []
+
+        class FakeResult:
+            records = []
+
+            class stats:
+                request_count = 1
+                pages_fetched = 1
+                records_parsed = 0
+                categories = ("rare",)
+
+        class FakeDirectScraper:
+            def __init__(self, *_args, **_kwargs):
+                return None
+
+            def fetch_text(self, _url):
+                return "<html></html>"
+
+            def check_target(self, target, index_html=None, categories=()):
+                scrape_calls.append(target)
+                return FakeResult()
+
+        def fake_send_email(*_args, **_kwargs):
+            return None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_out = main.OUT
+            original_state_path = main.STATE_PATH
+            original_dry_run = main.DRY_RUN
+            original_backend = main.SCRAPER_BACKEND
+            original_monitors = main.MONITORS
+            original_direct_scraper = main.DirectOrnithoScraper
+            original_send = main.send_email
+            try:
+                main.OUT = Path(tmpdir)
+                main.STATE_PATH = Path(tmpdir, "state.json")
+                main.DRY_RUN = True
+                main.SCRAPER_BACKEND = main.DIRECT_BACKEND
+                main.MONITORS = [
+                    config.Monitor(
+                        "unpaused",
+                        "unpaused@example.test",
+                        [("HB", "HB")],
+                        pause_until=date.today() - timedelta(days=1),
+                    )
+                ]
+                main.DirectOrnithoScraper = FakeDirectScraper
+                main.send_email = fake_send_email
+
+                main.run(mode=main.NOTIFY_MODE)
+                summary = json.loads(Path(tmpdir, "run_summary.json").read_text(encoding="utf-8"))
+            finally:
+                main.OUT = original_out
+                main.STATE_PATH = original_state_path
+                main.DRY_RUN = original_dry_run
+                main.SCRAPER_BACKEND = original_backend
+                main.MONITORS = original_monitors
+                main.DirectOrnithoScraper = original_direct_scraper
+                main.send_email = original_send
+
+        self.assertEqual(scrape_calls, [("HB", "HB")])
+        self.assertEqual(summary["monitors_enabled"], 1)
+        self.assertEqual(summary["monitors_skipped"], [])
+
+    def test_global_disable_skips_all_user_monitoring(self):
+        install_dependency_stubs()
+        import config
+        import ornitho.main as main
+
+        def fail_direct_scraper(*_args, **_kwargs):
+            raise AssertionError("global disable should not initialize direct scraper")
+
+        def fail_send_email(*_args, **_kwargs):
+            raise AssertionError("global disable should not send user email")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_out = main.OUT
+            original_state_path = main.STATE_PATH
+            original_dry_run = main.DRY_RUN
+            original_backend = main.SCRAPER_BACKEND
+            original_monitors = main.MONITORS
+            original_direct_scraper = main.DirectOrnithoScraper
+            original_send = main.send_email
+            original_disabled = main.MONITORING_DISABLED
+            try:
+                main.OUT = Path(tmpdir)
+                main.STATE_PATH = Path(tmpdir, "state.json")
+                main.DRY_RUN = False
+                main.SCRAPER_BACKEND = main.DIRECT_BACKEND
+                main.MONITORING_DISABLED = True
+                main.MONITORS = [config.Monitor("test", "user@example.test", [("HB", "HB")])]
+                main.DirectOrnithoScraper = fail_direct_scraper
+                main.send_email = fail_send_email
+
+                main.run(mode=main.NOTIFY_MODE)
+                summary = json.loads(Path(tmpdir, "run_summary.json").read_text(encoding="utf-8"))
+            finally:
+                main.OUT = original_out
+                main.STATE_PATH = original_state_path
+                main.DRY_RUN = original_dry_run
+                main.SCRAPER_BACKEND = original_backend
+                main.MONITORS = original_monitors
+                main.DirectOrnithoScraper = original_direct_scraper
+                main.send_email = original_send
+                main.MONITORING_DISABLED = original_disabled
+
+        self.assertTrue(summary["monitoring_disabled"])
+        self.assertEqual(summary["overall_run_status"], "SUCCESS")
+        self.assertEqual(summary["monitors_enabled"], 0)
+        self.assertEqual(summary["monitors_skipped"][0]["reason"], "global monitoring disabled")
+        self.assertEqual(summary["unique_scrape_queries_planned"], 0)
+        self.assertEqual(summary["actual_scrape_queries_executed"], 0)
+        self.assertEqual(summary["emails"]["user_sent"], [])
+        self.assertFalse(summary["state"]["saved"])
+        self.assertEqual(summary["state"]["skipped_reason"], "global monitoring disabled")
+        self.assertFalse(Path(tmpdir, "state.json").exists())
+
+    def test_operations_alert_still_runs_for_unexpected_failure_during_global_disable(self):
+        install_dependency_stubs()
+        import ornitho.main as main
+
+        sent = []
+
+        def fake_load_state(_path):
+            raise RuntimeError("state corrupted")
+
+        def fake_send_email(report, dry_run=False, email_to=None, subject=None):
+            sent.append((report, dry_run, email_to, subject))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_out = main.OUT
+            original_state_path = main.STATE_PATH
+            original_dry_run = main.DRY_RUN
+            original_disabled = main.MONITORING_DISABLED
+            original_operations_email = main.OPERATIONS_EMAIL
+            original_load_state = main.load_state
+            original_send = main.send_email
+            try:
+                main.OUT = Path(tmpdir)
+                main.STATE_PATH = Path(tmpdir, "state.json")
+                main.DRY_RUN = False
+                main.MONITORING_DISABLED = True
+                main.OPERATIONS_EMAIL = "ops@example.test"
+                main.load_state = fake_load_state
+                main.send_email = fake_send_email
+
+                with self.assertRaisesRegex(RuntimeError, "state corrupted"):
+                    main.run(mode=main.NOTIFY_MODE)
+                summary = json.loads(Path(tmpdir, "run_summary.json").read_text(encoding="utf-8"))
+            finally:
+                main.OUT = original_out
+                main.STATE_PATH = original_state_path
+                main.DRY_RUN = original_dry_run
+                main.MONITORING_DISABLED = original_disabled
+                main.OPERATIONS_EMAIL = original_operations_email
+                main.load_state = original_load_state
+                main.send_email = original_send
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0][2], "ops@example.test")
+        self.assertEqual(sent[0][3], main.OPERATIONS_ALERT_SUBJECT)
+        self.assertEqual(summary["overall_run_status"], "FAILED")
+        self.assertTrue(summary["monitoring_disabled"])
+        self.assertTrue(summary["emails"]["operations_alert_sent"])
 
     def test_direct_backend_uses_direct_scraper_without_playwright_retry(self):
         install_dependency_stubs()
@@ -1071,11 +1350,7 @@ class MonitorProfileTests(unittest.TestCase):
                 main.DIRECT_RETRY_BACKOFF_SECONDS = 1
                 main.DIRECT_TOTAL_TIMEOUT_SECONDS = 5
 
-                with self.assertRaisesRegex(
-                    main.DirectScraperRuntimeError,
-                    "Direct HTTP setup failed",
-                ):
-                    main.run(mode=main.NOTIFY_MODE)
+                main.run(mode=main.NOTIFY_MODE)
 
                 failure_artifact = Path(tmpdir, "scrape_failure.txt").read_text(
                     encoding="utf-8"
