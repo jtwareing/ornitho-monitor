@@ -4,7 +4,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import html
 import json
+from queue import Queue
 import re
+from threading import Thread
 import time
 from typing import Callable, Iterable
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
@@ -61,10 +63,34 @@ class TargetResolutionError(RuntimeError):
     pass
 
 
-def fetch_text_with_timeout(url: str, timeout: float = 45) -> str:
+def fetch_text_without_wall_clock_guard(url: str, timeout: float) -> str:
     request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urlopen(request, timeout=timeout) as response:
         return response.read().decode("utf-8")
+
+
+def fetch_text_with_timeout(url: str, timeout: float = 45) -> str:
+    result_queue = Queue(maxsize=1)
+
+    def worker():
+        try:
+            result_queue.put((True, fetch_text_without_wall_clock_guard(url, timeout)))
+        except BaseException as exc:
+            result_queue.put((False, exc))
+
+    thread = Thread(target=worker, daemon=True)
+    thread.start()
+    thread.join(timeout)
+    if thread.is_alive():
+        raise TimeoutError(f"Timed out after {timeout}s fetching {url}")
+
+    if result_queue.empty():
+        raise RuntimeError(f"No response returned while fetching {url}")
+
+    ok, value = result_queue.get()
+    if ok:
+        return value
+    raise value
 
 
 def default_fetch_text(url: str) -> str:

@@ -1,11 +1,14 @@
 import json
+import time
 import unittest
 from urllib.parse import parse_qs, urlsplit
 
 from ornitho.direct_shadow_compare import compare_records
+import ornitho.direct_scraper as direct_scraper_module
 from ornitho.direct_scraper import (
     DirectOrnithoScraper,
     apply_categories,
+    fetch_text_with_timeout,
     find_target_control,
     observation_page_url,
     row_to_record,
@@ -195,6 +198,24 @@ class DirectScraperTests(unittest.TestCase):
         self.assertEqual(result.records, [])
         self.assertEqual(result.stats.pages_fetched, 1)
         self.assertEqual(result.stats.records_parsed, 0)
+
+    def test_fetch_text_with_timeout_enforces_wall_clock_timeout(self):
+        original_fetch = direct_scraper_module.fetch_text_without_wall_clock_guard
+
+        def slow_fetch(_url, _timeout):
+            time.sleep(1)
+            return "late"
+
+        started = time.perf_counter()
+
+        try:
+            direct_scraper_module.fetch_text_without_wall_clock_guard = slow_fetch
+            with self.assertRaisesRegex(TimeoutError, "Timed out after"):
+                fetch_text_with_timeout("https://example.test/", timeout=0.01)
+        finally:
+            direct_scraper_module.fetch_text_without_wall_clock_guard = original_fetch
+
+        self.assertLess(time.perf_counter() - started, 1.0)
 
     def test_comparison_tool_reports_missing_and_extra_records(self):
         expected = [{"date": "D", "location": "L", "species": "A", "scientific": "S", "count": "1"}]
