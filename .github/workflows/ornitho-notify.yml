@@ -42,10 +42,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install Playwright and browser dependencies
-        run: |
-          python -m playwright install --with-deps chromium
-
       - name: Create output directory
         run: mkdir -p output state
 
@@ -58,23 +54,32 @@ jobs:
           fi
 
       - name: Run Ornitho notification monitor
+        timeout-minutes: 8
         env:
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'False' }}
-          SCRAPER_BACKEND: direct_with_fallback
+          SCRAPER_BACKEND: direct_with_retries
+          DIRECT_HTTP_TIMEOUT_SECONDS: "30"
+          DIRECT_SETUP_ATTEMPTS: "2"
+          DIRECT_RETRY_BACKOFF_SECONDS: "5"
+          DIRECT_TOTAL_TIMEOUT_SECONDS: "240"
         run: |
           echo "dry_run=${DRY_RUN}"
           echo "scraper_backend=${SCRAPER_BACKEND}"
-          echo "Python command: xvfb-run python -m ornitho.main --mode notify"
+          echo "direct_http_timeout_seconds=${DIRECT_HTTP_TIMEOUT_SECONDS}"
+          echo "direct_setup_attempts=${DIRECT_SETUP_ATTEMPTS}"
+          echo "direct_retry_backoff_seconds=${DIRECT_RETRY_BACKOFF_SECONDS}"
+          echo "direct_total_timeout_seconds=${DIRECT_TOTAL_TIMEOUT_SECONDS}"
+          echo "Python command: python -m ornitho.main --mode notify"
           python - <<'PY'
           import os
           print(f"EMAIL_FROM configured: {bool(os.environ.get('EMAIL_FROM'))}")
           print(f"EMAIL_TO configured: {bool(os.environ.get('EMAIL_TO'))}")
           print(f"EMAIL_PASSWORD configured: {bool(os.environ.get('EMAIL_PASSWORD'))}")
           PY
-          xvfb-run python -m ornitho.main --mode notify
+          python -m ornitho.main --mode notify
 
       - name: Commit updated state
         if: ${{ success() && (github.event_name != 'workflow_dispatch' || inputs.dry_run == false) }}

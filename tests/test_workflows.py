@@ -53,11 +53,19 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("ORNITHO_CATEGORIES:", daily)
         self.assertIn('echo "scraper_backend=${SCRAPER_BACKEND}"', daily)
 
-    def test_hourly_workflow_uses_direct_with_fallback_without_observer_target(self):
+    def test_hourly_workflow_uses_bounded_direct_backend_without_observer_target(self):
         hourly = self.workflow_text("ornitho-notify.yml")
         daily = self.workflow_text("ornitho.yml")
 
-        self.assertIn("SCRAPER_BACKEND: direct_with_fallback", hourly)
+        self.assertIn("SCRAPER_BACKEND: direct_with_retries", hourly)
+        self.assertIn('DIRECT_HTTP_TIMEOUT_SECONDS: "30"', hourly)
+        self.assertIn('DIRECT_SETUP_ATTEMPTS: "2"', hourly)
+        self.assertIn('DIRECT_RETRY_BACKOFF_SECONDS: "5"', hourly)
+        self.assertIn('DIRECT_TOTAL_TIMEOUT_SECONDS: "240"', hourly)
+        self.assertIn("timeout-minutes: 8", hourly)
+        self.assertNotIn("python -m playwright install", hourly)
+        self.assertIn("python -m ornitho.main --mode notify", hourly)
+        self.assertNotIn("xvfb-run python -m ornitho.main --mode notify", hourly)
         self.assertNotIn("ORNITHO_CATEGORIES:", hourly)
         self.assertNotIn("ORNITHO_NOTIFY_EXTRA_TARGETS", hourly)
         self.assertNotIn("SH-NF", hourly)

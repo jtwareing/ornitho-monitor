@@ -61,10 +61,14 @@ class TargetResolutionError(RuntimeError):
     pass
 
 
-def default_fetch_text(url: str) -> str:
+def fetch_text_with_timeout(url: str, timeout: float = 45) -> str:
     request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urlopen(request, timeout=45) as response:
+    with urlopen(request, timeout=timeout) as response:
         return response.read().decode("utf-8")
+
+
+def default_fetch_text(url: str) -> str:
+    return fetch_text_with_timeout(url, timeout=45)
 
 
 def extract_control_urls(onclick: str) -> list[str]:

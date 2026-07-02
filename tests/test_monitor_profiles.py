@@ -570,6 +570,44 @@ class MonitorProfileTests(unittest.TestCase):
 
         self.assertEqual(result, fallback_records)
 
+    def test_direct_with_retries_does_not_use_playwright_when_direct_fails(self):
+        install_dependency_stubs()
+        import ornitho.main as main
+
+        class FailingDirectScraper:
+            def check_target(self, *_args, **_kwargs):
+                raise RuntimeError("direct unavailable")
+
+        def fail_check_target_with_retry(*_args, **_kwargs):
+            raise AssertionError("Playwright retry path should not be used")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_out = main.OUT
+            original_check = main.check_target_with_retry
+            try:
+                main.OUT = Path(tmpdir)
+                main.check_target_with_retry = fail_check_target_with_retry
+
+                with self.assertRaisesRegex(RuntimeError, "direct unavailable"):
+                    main.check_target_records(
+                        None,
+                        FailingDirectScraper(),
+                        "<html></html>",
+                        "HB",
+                        "HB",
+                        backend=main.DIRECT_WITH_RETRIES_BACKEND,
+                    )
+
+                failure_artifact = Path(tmpdir, "scrape_failure.txt").read_text(
+                    encoding="utf-8"
+                )
+            finally:
+                main.OUT = original_out
+                main.check_target_with_retry = original_check
+
+        self.assertIn("Direct HTTP failed for HB-HB", failure_artifact)
+        self.assertIn("no email sent and state not updated", failure_artifact)
+
     def test_direct_with_fallback_handles_initial_direct_setup_failure(self):
         install_dependency_stubs()
         import config
@@ -578,6 +616,9 @@ class MonitorProfileTests(unittest.TestCase):
         seen_targets = []
 
         class FailingDirectScraper:
+            def __init__(self, *_args, **_kwargs):
+                return None
+
             def fetch_text(self, _url):
                 raise TimeoutError("direct setup timed out")
 
@@ -640,6 +681,80 @@ class MonitorProfileTests(unittest.TestCase):
                 main.send_email = original_send
 
         self.assertEqual(seen_targets, [("HB", "HB")])
+
+    def test_direct_with_retries_setup_failure_stops_before_email_or_state(self):
+        install_dependency_stubs()
+        import config
+        import ornitho.main as main
+
+        class FailingDirectScraper:
+            def __init__(self, *_args, **_kwargs):
+                return None
+
+            def fetch_text(self, _url):
+                raise TimeoutError("direct setup timed out")
+
+        def fail_sync_playwright():
+            raise AssertionError("Playwright should not be launched")
+
+        def fail_check_target_with_retry(*_args, **_kwargs):
+            raise AssertionError("Playwright retry path should not be used")
+
+        def fail_send_email(*_args, **_kwargs):
+            raise AssertionError("email should not be sent after direct setup failure")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_out = main.OUT
+            original_state_path = main.STATE_PATH
+            original_dry_run = main.DRY_RUN
+            original_backend = main.SCRAPER_BACKEND
+            original_monitors = main.MONITORS
+            original_direct_scraper = main.DirectOrnithoScraper
+            original_sync_playwright = main.sync_playwright
+            original_check = main.check_target_with_retry
+            original_send = main.send_email
+            original_setup_attempts = main.DIRECT_SETUP_ATTEMPTS
+            original_backoff = main.DIRECT_RETRY_BACKOFF_SECONDS
+            original_total_timeout = main.DIRECT_TOTAL_TIMEOUT_SECONDS
+            try:
+                main.OUT = Path(tmpdir)
+                main.STATE_PATH = Path(tmpdir, "state.json")
+                main.DRY_RUN = False
+                main.SCRAPER_BACKEND = main.DIRECT_WITH_RETRIES_BACKEND
+                main.MONITORS = [config.Monitor("test", "profile@example.test", [("HB", "HB")])]
+                main.DirectOrnithoScraper = FailingDirectScraper
+                main.sync_playwright = fail_sync_playwright
+                main.check_target_with_retry = fail_check_target_with_retry
+                main.send_email = fail_send_email
+                main.DIRECT_SETUP_ATTEMPTS = 1
+                main.DIRECT_RETRY_BACKOFF_SECONDS = 1
+                main.DIRECT_TOTAL_TIMEOUT_SECONDS = 5
+
+                with self.assertRaisesRegex(
+                    main.DirectScraperRuntimeError,
+                    "Direct HTTP setup failed",
+                ):
+                    main.run(mode=main.NOTIFY_MODE)
+
+                failure_artifact = Path(tmpdir, "scrape_failure.txt").read_text(
+                    encoding="utf-8"
+                )
+            finally:
+                main.OUT = original_out
+                main.STATE_PATH = original_state_path
+                main.DRY_RUN = original_dry_run
+                main.SCRAPER_BACKEND = original_backend
+                main.MONITORS = original_monitors
+                main.DirectOrnithoScraper = original_direct_scraper
+                main.sync_playwright = original_sync_playwright
+                main.check_target_with_retry = original_check
+                main.send_email = original_send
+                main.DIRECT_SETUP_ATTEMPTS = original_setup_attempts
+                main.DIRECT_RETRY_BACKOFF_SECONDS = original_backoff
+                main.DIRECT_TOTAL_TIMEOUT_SECONDS = original_total_timeout
+
+        self.assertIn("no email sent and state not updated", failure_artifact)
+        self.assertFalse(Path(tmpdir, "state.json").exists())
 
     def test_explicit_none_recipient_does_not_fall_back_to_global_email_to(self):
         os.environ["EMAIL_FROM"] = "from@example.test"

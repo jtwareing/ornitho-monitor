@@ -1,7 +1,7 @@
 Ornitho Daily Rare Bird Monitor
 
 Overview
-This project monitors selected Ornitho regions with Playwright, extracts rare-bird records, sends email reports, and stores persistent record state in the repository.
+This project monitors selected Ornitho regions, extracts rare-bird records, sends email reports, and stores persistent record state in the repository.
 
 The scraper is deliberately separate from reporting, email, and state handling:
 - ornitho/scraper.py navigates Ornitho and returns parsed records.
@@ -88,7 +88,7 @@ Dry-run:
 - does not commit state
 
 Scraper backend
-The production default is still Playwright:
+The Daily Summary production default is still Playwright:
 SCRAPER_BACKEND=playwright
 
 Direct HTTP scraping can be tested without changing report or email behaviour:
@@ -96,6 +96,11 @@ SCRAPER_BACKEND=direct
 
 Temporary fallback mode tries direct HTTP first and falls back to Playwright if direct target resolution or fetching fails:
 SCRAPER_BACKEND=direct_with_fallback
+
+Hourly notification production uses bounded direct HTTP retries without automatic Playwright fallback:
+SCRAPER_BACKEND=direct_with_retries
+
+The bounded direct backend uses short request timeouts, limited setup retries, and a total runtime budget. If direct HTTP still fails, the workflow fails visibly, uploads the output artifact, sends no user email for that failed run, and does not commit state. Playwright remains available for manual diagnostic and shadow comparison workflows.
 
 Category filters are configured per monitor in monitors.json. Daily and notification modes can use different category lists so current behaviour is preserved while allowing future monitors to choose their own rarity levels.
 
@@ -138,7 +143,7 @@ Ornitho Hourly Notifications
 - dispatch-only workflow for Notification mode
 - production hourly triggering should be done by the external scheduler described below
 - uses Notification mode
-- currently uses SCRAPER_BACKEND=direct_with_fallback during the cautious direct HTTP rollout
+- uses SCRAPER_BACKEND=direct_with_retries for bounded direct HTTP runtime
 - supports manual dry-run
 - commits state only after successful non-dry-run runs
 

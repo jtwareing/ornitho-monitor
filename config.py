@@ -36,6 +36,19 @@ def parse_targets(value: str) -> list[tuple[str, str]]:
     return targets
 
 
+def env_int(name: str, default: int) -> int:
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise MonitorConfigError(f"{name} must be an integer") from exc
+    if value <= 0:
+        raise MonitorConfigError(f"{name} must be greater than zero")
+    return value
+
+
 @dataclass(frozen=True)
 class Monitor:
     name: str
@@ -173,3 +186,7 @@ HEADLESS = False
 DRY_RUN = os.environ.get("DRY_RUN", "False").strip().lower() in {"1", "true", "yes", "on"}
 SCRAPER_BACKEND = os.environ.get("SCRAPER_BACKEND", "playwright").strip().lower()
 NOTIFY_EXTRA_TARGETS = parse_targets(os.environ.get("ORNITHO_NOTIFY_EXTRA_TARGETS", ""))
+DIRECT_HTTP_TIMEOUT_SECONDS = env_int("DIRECT_HTTP_TIMEOUT_SECONDS", 30)
+DIRECT_SETUP_ATTEMPTS = env_int("DIRECT_SETUP_ATTEMPTS", 2)
+DIRECT_RETRY_BACKOFF_SECONDS = env_int("DIRECT_RETRY_BACKOFF_SECONDS", 5)
+DIRECT_TOTAL_TIMEOUT_SECONDS = env_int("DIRECT_TOTAL_TIMEOUT_SECONDS", 240)
