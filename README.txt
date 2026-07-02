@@ -152,6 +152,16 @@ Ornitho Hourly Notifications
 - supports manual dry-run
 - commits state only after successful non-dry-run runs
 
+Hourly run observability
+Every hourly notification run writes output/run_summary.json. On bounded direct
+scraper failure, output/scrape_failure.txt is also written. The workflow uploads
+output/ as an artifact even when the run fails.
+
+Operational alert emails are separate from bird notification emails. Set
+OPERATIONS_EMAIL to send failure alerts to maintainers. If OPERATIONS_EMAIL is
+unset, the monitor records that no operational alert was sent and does not fall
+back to EMAIL_TO or any monitor recipient.
+
 Ornitho Notify Test
 - file: .github/workflows/ornitho-notify-test.yml
 - manual-only test workflow for Notification mode
@@ -252,6 +262,7 @@ Required GitHub secrets
 - EMAIL_FROM
 - EMAIL_TO
 - EMAIL_PASSWORD
+- OPERATIONS_EMAIL
 
 Local verification
 Run unit tests:

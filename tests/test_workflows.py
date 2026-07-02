@@ -58,6 +58,8 @@ class WorkflowTests(unittest.TestCase):
         daily = self.workflow_text("ornitho.yml")
 
         self.assertIn("SCRAPER_BACKEND: direct_with_retries", hourly)
+        self.assertIn("OPERATIONS_EMAIL: ${{ secrets.OPERATIONS_EMAIL }}", hourly)
+        self.assertIn("OPERATIONS_EMAIL configured", hourly)
         self.assertIn('DIRECT_HTTP_TIMEOUT_SECONDS: "30"', hourly)
         self.assertIn('DIRECT_SETUP_ATTEMPTS: "2"', hourly)
         self.assertIn('DIRECT_RETRY_BACKOFF_SECONDS: "5"', hourly)

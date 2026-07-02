@@ -1,4 +1,5 @@
 import importlib
+import json
 import os
 from pathlib import Path
 import sys
@@ -544,6 +545,173 @@ class MonitorProfileTests(unittest.TestCase):
                 (("HB", "HB"), ("rare", "veryrare")),
             ],
         )
+
+    def test_successful_run_writes_run_summary(self):
+        install_dependency_stubs()
+        import config
+        import ornitho.main as main
+
+        record = {
+            "date": "Saturday, June 27th, 2026",
+            "location": "Summary Marsh",
+            "count": "1",
+            "species": "Summary Bird",
+            "scientific": "Avis summa",
+            "detail": "",
+        }
+
+        class FakeResult:
+            records = [record]
+
+            class stats:
+                request_count = 1
+                pages_fetched = 1
+                records_parsed = 1
+                categories = ("rare",)
+
+        class FakeDirectScraper:
+            def __init__(self, *_args, **_kwargs):
+                return None
+
+            def fetch_text(self, _url):
+                return "<html></html>"
+
+            def check_target(self, target, index_html=None, categories=()):
+                return FakeResult()
+
+        def fake_send_email(*_args, **_kwargs):
+            return None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_out = main.OUT
+            original_state_path = main.STATE_PATH
+            original_dry_run = main.DRY_RUN
+            original_backend = main.SCRAPER_BACKEND
+            original_monitors = main.MONITORS
+            original_direct_scraper = main.DirectOrnithoScraper
+            original_send = main.send_email
+            try:
+                main.OUT = Path(tmpdir)
+                main.STATE_PATH = Path(tmpdir, "state.json")
+                main.DRY_RUN = True
+                main.SCRAPER_BACKEND = main.DIRECT_BACKEND
+                main.MONITORS = [
+                    config.Monitor(
+                        "summary",
+                        "summary@example.test",
+                        [("HB", "HB")],
+                        categories={"daily": ("rare",), "notify": ("rare",)},
+                    )
+                ]
+                main.DirectOrnithoScraper = FakeDirectScraper
+                main.send_email = fake_send_email
+
+                main.run(mode=main.NOTIFY_MODE)
+                summary = json.loads(Path(tmpdir, "run_summary.json").read_text(encoding="utf-8"))
+            finally:
+                main.OUT = original_out
+                main.STATE_PATH = original_state_path
+                main.DRY_RUN = original_dry_run
+                main.SCRAPER_BACKEND = original_backend
+                main.MONITORS = original_monitors
+                main.DirectOrnithoScraper = original_direct_scraper
+                main.send_email = original_send
+
+        self.assertEqual(summary["overall_run_status"], "SUCCESS")
+        self.assertEqual(summary["backend"], main.DIRECT_BACKEND)
+        self.assertTrue(summary["dry_run"])
+        self.assertEqual(summary["monitors_loaded"], 1)
+        self.assertEqual(summary["monitors_enabled"], 1)
+        self.assertEqual(summary["unique_scrape_queries_planned"], 1)
+        self.assertEqual(summary["actual_scrape_queries_executed"], 1)
+        self.assertEqual(summary["records_per_monitor"]["summary"]["current_records"], 1)
+        self.assertEqual(summary["records_per_monitor"]["summary"]["new_records"], 1)
+        self.assertEqual(summary["emails"]["user_sent"], [])
+        self.assertEqual(summary["emails"]["user_skipped"][0]["reason"], "DRY_RUN enabled")
+        self.assertFalse(summary["state"]["saved"])
+        self.assertEqual(summary["state"]["skipped_reason"], "DRY_RUN enabled")
+
+    def test_bounded_direct_failure_writes_summary_and_operations_alert_only(self):
+        install_dependency_stubs()
+        import config
+        import ornitho.main as main
+
+        sent = []
+
+        class FailingDirectScraper:
+            def __init__(self, *_args, **_kwargs):
+                return None
+
+            def fetch_text(self, _url):
+                raise TimeoutError("direct setup timed out")
+
+        def fail_check_target_with_retry(*_args, **_kwargs):
+            raise AssertionError("Playwright retry path should not be used")
+
+        def fake_send_email(report, dry_run=False, email_to=None, subject=None):
+            sent.append((report, dry_run, email_to, subject))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_out = main.OUT
+            original_state_path = main.STATE_PATH
+            original_dry_run = main.DRY_RUN
+            original_backend = main.SCRAPER_BACKEND
+            original_monitors = main.MONITORS
+            original_direct_scraper = main.DirectOrnithoScraper
+            original_check = main.check_target_with_retry
+            original_send = main.send_email
+            original_operations_email = main.OPERATIONS_EMAIL
+            original_setup_attempts = main.DIRECT_SETUP_ATTEMPTS
+            original_backoff = main.DIRECT_RETRY_BACKOFF_SECONDS
+            original_total_timeout = main.DIRECT_TOTAL_TIMEOUT_SECONDS
+            try:
+                main.OUT = Path(tmpdir)
+                main.STATE_PATH = Path(tmpdir, "state.json")
+                main.DRY_RUN = False
+                main.SCRAPER_BACKEND = main.DIRECT_WITH_RETRIES_BACKEND
+                main.MONITORS = [config.Monitor("test", "user@example.test", [("HB", "HB")])]
+                main.DirectOrnithoScraper = FailingDirectScraper
+                main.check_target_with_retry = fail_check_target_with_retry
+                main.send_email = fake_send_email
+                main.OPERATIONS_EMAIL = "ops@example.test"
+                main.DIRECT_SETUP_ATTEMPTS = 1
+                main.DIRECT_RETRY_BACKOFF_SECONDS = 1
+                main.DIRECT_TOTAL_TIMEOUT_SECONDS = 5
+
+                with self.assertRaisesRegex(main.DirectScraperRuntimeError, "Direct HTTP setup failed"):
+                    main.run(mode=main.NOTIFY_MODE)
+
+                summary = json.loads(Path(tmpdir, "run_summary.json").read_text(encoding="utf-8"))
+                failure = Path(tmpdir, "scrape_failure.txt").read_text(encoding="utf-8")
+            finally:
+                main.OUT = original_out
+                main.STATE_PATH = original_state_path
+                main.DRY_RUN = original_dry_run
+                main.SCRAPER_BACKEND = original_backend
+                main.MONITORS = original_monitors
+                main.DirectOrnithoScraper = original_direct_scraper
+                main.check_target_with_retry = original_check
+                main.send_email = original_send
+                main.OPERATIONS_EMAIL = original_operations_email
+                main.DIRECT_SETUP_ATTEMPTS = original_setup_attempts
+                main.DIRECT_RETRY_BACKOFF_SECONDS = original_backoff
+                main.DIRECT_TOTAL_TIMEOUT_SECONDS = original_total_timeout
+
+        self.assertIn("no email sent and state not updated", failure)
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0][2], "ops@example.test")
+        self.assertEqual(sent[0][3], main.OPERATIONS_ALERT_SUBJECT)
+        self.assertIn("No user bird-notification emails", sent[0][0])
+        self.assertEqual(summary["overall_run_status"], "FAILED")
+        self.assertEqual(summary["unique_scrape_queries_planned"], 1)
+        self.assertEqual(summary["actual_scrape_queries_executed"], 0)
+        self.assertEqual(len(summary["scrape_setup_attempts"]), 1)
+        self.assertFalse(summary["direct_http"]["success"])
+        self.assertEqual(summary["emails"]["user_sent"], [])
+        self.assertTrue(summary["emails"]["operations_alert_sent"])
+        self.assertFalse(summary["state"]["saved"])
+        self.assertEqual(summary["state"]["skipped_reason"], "run failed")
+        self.assertFalse(Path(tmpdir, "state.json").exists())
 
     def test_direct_backend_uses_direct_scraper_without_playwright_retry(self):
         install_dependency_stubs()

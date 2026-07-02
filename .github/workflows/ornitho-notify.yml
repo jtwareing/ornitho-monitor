@@ -59,6 +59,7 @@ jobs:
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          OPERATIONS_EMAIL: ${{ secrets.OPERATIONS_EMAIL }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'False' }}
           SCRAPER_BACKEND: direct_with_retries
           DIRECT_HTTP_TIMEOUT_SECONDS: "30"
@@ -78,6 +79,7 @@ jobs:
           print(f"EMAIL_FROM configured: {bool(os.environ.get('EMAIL_FROM'))}")
           print(f"EMAIL_TO configured: {bool(os.environ.get('EMAIL_TO'))}")
           print(f"EMAIL_PASSWORD configured: {bool(os.environ.get('EMAIL_PASSWORD'))}")
+          print(f"OPERATIONS_EMAIL configured: {bool(os.environ.get('OPERATIONS_EMAIL'))}")
           PY
           python -m ornitho.main --mode notify
 

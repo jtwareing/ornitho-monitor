@@ -185,6 +185,7 @@ WAIT_SECONDS = 20
 HEADLESS = False
 DRY_RUN = os.environ.get("DRY_RUN", "False").strip().lower() in {"1", "true", "yes", "on"}
 SCRAPER_BACKEND = os.environ.get("SCRAPER_BACKEND", "playwright").strip().lower()
+OPERATIONS_EMAIL = os.environ.get("OPERATIONS_EMAIL", "").strip()
 NOTIFY_EXTRA_TARGETS = parse_targets(os.environ.get("ORNITHO_NOTIFY_EXTRA_TARGETS", ""))
 DIRECT_HTTP_TIMEOUT_SECONDS = env_int("DIRECT_HTTP_TIMEOUT_SECONDS", 30)
 DIRECT_SETUP_ATTEMPTS = env_int("DIRECT_SETUP_ATTEMPTS", 2)
