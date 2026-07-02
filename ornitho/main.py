@@ -422,6 +422,15 @@ def run(mode=DAILY_MODE):
             f"total_timeout={DIRECT_TOTAL_TIMEOUT_SECONDS}s"
         )
 
+    monitor_requests = build_monitor_scrape_requests(
+        enabled_monitors,
+        mode=mode,
+        backend=active_backend,
+        extra_targets=NOTIFY_EXTRA_TARGETS if mode == NOTIFY_MODE else (),
+    )
+    scrape_queries = unique_scrape_queries(monitor_requests)
+    log_scrape_plan(MONITORS, enabled_monitors, monitor_requests, scrape_queries)
+
     if SCRAPER_BACKEND in DIRECT_BACKENDS:
         direct_scraper = DirectOrnithoScraper(fetch_text=bounded_fetch_text(deadline))
         if SCRAPER_BACKEND == DIRECT_WITH_RETRIES_BACKEND:
@@ -439,15 +448,14 @@ def run(mode=DAILY_MODE):
                     "Direct HTTP setup failed; using Playwright fallback: "
                     f"{type(exc).__name__}: {exc}"
                 )
-
-    monitor_requests = build_monitor_scrape_requests(
-        enabled_monitors,
-        mode=mode,
-        backend=active_backend,
-        extra_targets=NOTIFY_EXTRA_TARGETS if mode == NOTIFY_MODE else (),
-    )
-    scrape_queries = unique_scrape_queries(monitor_requests)
-    log_scrape_plan(MONITORS, enabled_monitors, monitor_requests, scrape_queries)
+                monitor_requests = build_monitor_scrape_requests(
+                    enabled_monitors,
+                    mode=mode,
+                    backend=active_backend,
+                    extra_targets=NOTIFY_EXTRA_TARGETS if mode == NOTIFY_MODE else (),
+                )
+                scrape_queries = unique_scrape_queries(monitor_requests)
+                log_scrape_plan(MONITORS, enabled_monitors, monitor_requests, scrape_queries)
 
     if active_backend in {DIRECT_BACKEND, DIRECT_WITH_RETRIES_BACKEND}:
         scraped_results, scrape_errors = execute_scrape_plan(
