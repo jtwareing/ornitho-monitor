@@ -9,7 +9,9 @@
           "seen_record_keys": []
         },
         "NI-FRI": {
-          "seen_record_keys": []
+          "seen_record_keys": [
+            "289f392dbfe62d976750849156e30a90b927c2b4a0f7b1ae3c6e4fc00b8b05ba"
+          ]
         },
         "NI-WTM": {
           "seen_record_keys": []
