@@ -53,12 +53,12 @@
   "operations": {
     "handled_failure": {
       "active": true,
-      "failure_type": "DirectScraperRuntimeError",
-      "first_seen": "2026-07-03T09:23:23.376433+00:00",
-      "last_alert_sent": "2026-07-03T09:23:23.376433+00:00",
+      "failure_type": "DirectScraperRuntimeError:TimeoutError",
+      "first_seen": "2026-07-03T11:23:52.986496+00:00",
+      "last_alert_sent": "2026-07-03T11:23:52.986496+00:00",
       "last_recovery_sent": null,
-      "last_seen": "2026-07-03T10:23:21.940483+00:00",
-      "suppressed_count": 1
+      "last_seen": "2026-07-03T11:23:52.986496+00:00",
+      "suppressed_count": 0
     }
   },
   "schema_version": 1
