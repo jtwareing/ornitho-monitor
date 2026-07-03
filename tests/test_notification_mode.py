@@ -32,6 +32,12 @@ def sample_record(species="Test Bird"):
     }
 
 
+def sample_record_with_location(species, location):
+    record = sample_record(species=species)
+    record["location"] = location
+    return record
+
+
 class NotificationModeTests(unittest.TestCase):
     def run_notify_monitor(self, initial_state, records, monitor_name="test"):
         install_dependency_stubs()
@@ -96,18 +102,36 @@ class NotificationModeTests(unittest.TestCase):
     def test_one_new_record_sends_one_notification(self):
         from ornitho.state import empty_state
 
-        record = sample_record()
+        record = sample_record_with_location(
+            "Black Kite",
+            "Leester Marsch NW [2918_4_50s] / Weyhe (NI, DH)",
+        )
+        record["scientific"] = "Milvus migrans"
 
         updated_state, sent, report = self.run_notify_monitor(empty_state(), [record])
 
         self.assertEqual(len(sent), 1)
-        self.assertEqual(sent[0][3], "Ornitho Rare Bird Notification")
-        self.assertIn("NEW RARE BIRDS", sent[0][0])
+        self.assertEqual(sent[0][3], "Black Kite - Leester Marsch NW / Weyhe")
+        self.assertNotIn("NEW RARE BIRDS", sent[0][0])
         self.assertIn("HB-HB", sent[0][0])
-        self.assertIn("Test Bird (Avis testus)", sent[0][0])
-        self.assertIn("1 - Test Marsh", sent[0][0])
-        self.assertIn("Test Bird (Avis testus)", report)
+        self.assertIn("Black Kite (Milvus migrans)", sent[0][0])
+        self.assertIn("1 - Leester Marsch NW [2918_4_50s] / Weyhe (NI, DH)", sent[0][0])
+        self.assertIn("Black Kite (Milvus migrans)", report)
         self.assertIn("test", updated_state["monitors"])
+
+    def test_multiple_new_records_subject_lists_species_with_duplicate_counts(self):
+        from ornitho.state import empty_state
+
+        records = [
+            sample_record_with_location("Black Kite", "First Marsh"),
+            sample_record_with_location("Black Kite", "Second Marsh"),
+            sample_record_with_location("Osprey", "River"),
+        ]
+
+        _updated_state, sent, _report = self.run_notify_monitor(empty_state(), records)
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0][3], "Black Kite (2), Osprey")
 
     def test_repeated_run_sends_no_second_notification(self):
         from ornitho.state import empty_state

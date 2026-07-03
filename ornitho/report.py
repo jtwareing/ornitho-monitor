@@ -1,4 +1,6 @@
+from collections import OrderedDict
 from datetime import date
+import re
 
 
 def build_report(all_results, errors):
@@ -36,7 +38,7 @@ def build_report(all_results, errors):
 
 
 def build_notification_report(new_results, errors):
-    report_lines = ["NEW RARE BIRDS", ""]
+    report_lines = []
     total_records = sum(len(records) for _, records in new_results)
 
     if total_records == 0 and not errors:
@@ -65,3 +67,36 @@ def build_notification_report(new_results, errors):
         report_lines.append("")
 
     return "\n".join(report_lines)
+
+
+def clean_subject_location(location):
+    location = re.sub(r"\s*\[[^\]]*\]", "", location or "")
+    location = re.sub(r"\s*\([^)]*\)", "", location)
+    location = re.sub(r"\s*/\s*", " / ", location)
+    location = re.sub(r"\s+", " ", location)
+    return location.strip()
+
+
+def build_notification_subject(new_results):
+    records = [record for _, records in new_results for record in records]
+    if not records:
+        return "Ornitho Rare Bird Notification"
+
+    if len(records) == 1:
+        record = records[0]
+        species = record.get("species", "Rare bird").strip() or "Rare bird"
+        location = clean_subject_location(record.get("location", ""))
+        if location:
+            return f"{species} - {location}"
+        return species
+
+    species_counts = OrderedDict()
+    for record in records:
+        species = record.get("species", "Rare bird").strip() or "Rare bird"
+        species_counts[species] = species_counts.get(species, 0) + 1
+
+    subject_parts = [
+        f"{species} ({count})" if count > 1 else species
+        for species, count in species_counts.items()
+    ]
+    return ", ".join(subject_parts)

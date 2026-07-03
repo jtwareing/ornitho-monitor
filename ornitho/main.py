@@ -27,13 +27,12 @@ from config import (
 )
 from emailer import send_email
 from ornitho.direct_scraper import CURRENT_OBSERVATIONS_URL, DirectOrnithoScraper, fetch_text_with_timeout
-from ornitho.report import build_notification_report, build_report
+from ornitho.report import build_notification_report, build_notification_subject, build_report
 from ornitho.scraper import check_target_with_retry
 from ornitho.state import compare_current_records, load_state, save_state, update_state
 
 DAILY_MODE = "daily"
 NOTIFY_MODE = "notify"
-NOTIFICATION_SUBJECT = "Ornitho Rare Bird Notification"
 OPERATIONS_ALERT_SUBJECT = "Ornitho Monitor Operational Alert"
 OPERATIONS_RECOVERY_SUBJECT = "Ornitho Monitor Recovery"
 PLAYWRIGHT_BACKEND = "playwright"
@@ -692,7 +691,7 @@ def run_monitor_from_scraped(
     print(report)
 
     if should_send_report(mode, new_count):
-        subject = NOTIFICATION_SUBJECT if mode == NOTIFY_MODE else None
+        subject = build_notification_subject(report_results) if mode == NOTIFY_MODE else None
         send_email(report, dry_run=DRY_RUN, email_to=monitor.email_to, subject=subject)
         if summary is not None:
             if DRY_RUN:
