@@ -14,6 +14,15 @@ This project monitors selected Ornitho regions, extracts rare-bird records,
 sends email reports, and stores persistent notification state in the
 repository.
 
+Further documentation
+
+- ARCHITECTURE.md explains the production architecture, data flow, component
+  boundaries, and major design decisions.
+- ENGINEERING_PRINCIPLES.md records the durable engineering principles from the
+  v1.0 review.
+- ADAPTER_GUIDE.md describes how future acquisition adapters should integrate
+  with scrape planning, state comparison, notifications, and operations.
+
 Production architecture
 
 The current production path is:
