@@ -50,5 +50,8 @@
       }
     }
   },
+  "operations": {
+    "handled_failure": {}
+  },
   "schema_version": 1
 }
