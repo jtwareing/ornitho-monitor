@@ -1,6 +1,6 @@
 import argparse
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import json
 import time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -23,6 +23,7 @@ from config import (
     DIRECT_SETUP_ATTEMPTS,
     DIRECT_RETRY_BACKOFF_SECONDS,
     DIRECT_TOTAL_TIMEOUT_SECONDS,
+    OPERATIONS_ALERT_THROTTLE_HOURS,
 )
 from emailer import send_email
 from ornitho.direct_scraper import CURRENT_OBSERVATIONS_URL, DirectOrnithoScraper, fetch_text_with_timeout
@@ -34,6 +35,7 @@ DAILY_MODE = "daily"
 NOTIFY_MODE = "notify"
 NOTIFICATION_SUBJECT = "Ornitho Rare Bird Notification"
 OPERATIONS_ALERT_SUBJECT = "Ornitho Monitor Operational Alert"
+OPERATIONS_RECOVERY_SUBJECT = "Ornitho Monitor Recovery"
 PLAYWRIGHT_BACKEND = "playwright"
 DIRECT_BACKEND = "direct"
 DIRECT_WITH_FALLBACK_BACKEND = "direct_with_fallback"
@@ -114,6 +116,14 @@ def new_run_summary(mode):
             "user_skipped": [],
             "operations_alert_sent": False,
             "operations_alert_skipped_reason": None,
+            "operations_recovery_sent": False,
+            "operations_recovery_skipped_reason": None,
+        },
+        "operations": {
+            "alert_throttle_hours": OPERATIONS_ALERT_THROTTLE_HOURS,
+            "failure_type": None,
+            "alert_suppressed": False,
+            "recovery_sent": False,
         },
         "state": {
             "saved": False,
@@ -172,6 +182,102 @@ def build_operations_alert(summary, failure_reason):
     return "\n".join(lines)
 
 
+def build_operations_recovery(summary, previous_failure):
+    lines = [
+        "Ornitho monitor recovery",
+        "",
+        f"Status: {summary['overall_run_status']}",
+        f"Mode: {summary['mode']}",
+        f"Backend: {summary['active_backend']}",
+        f"Dry run: {summary['dry_run']}",
+        f"Started: {summary['run_start_time']}",
+        f"Ended: {summary['run_end_time']}",
+        f"Runtime seconds: {summary['total_runtime_seconds']}",
+        "",
+        "Scraping has recovered after handled failures.",
+        "",
+        f"Previous failure type: {previous_failure.get('failure_type')}",
+        f"First seen: {previous_failure.get('first_seen')}",
+        f"Last seen: {previous_failure.get('last_seen')}",
+        f"Suppressed repeat alerts: {previous_failure.get('suppressed_count', 0)}",
+        "",
+        f"Unique scrape queries planned: {summary['unique_scrape_queries_planned']}",
+        f"Actual scrape queries executed: {summary['actual_scrape_queries_executed']}",
+    ]
+    return "\n".join(lines)
+
+
+def parse_utc_iso(value):
+    if not value:
+        return None
+    return datetime.fromisoformat(value)
+
+
+def handled_failure_state(state):
+    operations = state.setdefault("operations", {})
+    return operations.setdefault("handled_failure", {})
+
+
+def failure_type_from_reason(failure_reason):
+    text = str(failure_reason)
+    if "TimeoutError" in text:
+        return "DirectScraperRuntimeError:TimeoutError"
+    return text.split(":", 1)[0]
+
+
+def should_send_handled_failure_alert(state, failure_type, now):
+    current = handled_failure_state(state)
+    if not current.get("active"):
+        return True, "first handled failure"
+    if current.get("failure_type") != failure_type:
+        return True, "new handled failure type"
+
+    last_alert_sent = parse_utc_iso(current.get("last_alert_sent"))
+    if last_alert_sent is None:
+        return True, "no previous alert timestamp"
+
+    next_allowed = last_alert_sent + timedelta(hours=OPERATIONS_ALERT_THROTTLE_HOURS)
+    if now >= next_allowed:
+        return True, "throttle window elapsed"
+    return False, f"same handled failure within {OPERATIONS_ALERT_THROTTLE_HOURS}h throttle window"
+
+
+def record_handled_failure_state(state, failure_type, now, alert_sent):
+    current = handled_failure_state(state)
+    if not current.get("active") or current.get("failure_type") != failure_type:
+        current.clear()
+        current.update(
+            {
+                "active": True,
+                "failure_type": failure_type,
+                "first_seen": now.isoformat(),
+                "last_seen": now.isoformat(),
+                "last_alert_sent": now.isoformat() if alert_sent else None,
+                "last_recovery_sent": None,
+                "suppressed_count": 0 if alert_sent else 1,
+            }
+        )
+        return
+
+    current["active"] = True
+    current["last_seen"] = now.isoformat()
+    if alert_sent:
+        current["last_alert_sent"] = now.isoformat()
+        current["suppressed_count"] = 0
+    else:
+        current["suppressed_count"] = int(current.get("suppressed_count", 0)) + 1
+
+
+def clear_handled_failure_state(state, now):
+    current = handled_failure_state(state)
+    if not current.get("active"):
+        return None
+    previous = dict(current)
+    current["active"] = False
+    current["last_recovery_sent"] = now.isoformat()
+    return previous
+
+
 def skip_entry(monitor, reason):
     return {"monitor": monitor.name, "reason": reason}
 
@@ -213,10 +319,37 @@ def classify_monitors(monitors, today=None):
     return enabled_monitors, skipped_monitors
 
 
-def send_operations_alert(summary, failure_reason):
+def send_operations_alert(summary, failure_reason, state=None):
+    now = datetime.now(timezone.utc)
+    failure_type = failure_type_from_reason(failure_reason)
+    summary["operations"]["failure_type"] = failure_type
+
+    should_send = True
+    skip_reason = None
+    if state is not None:
+        should_send, skip_reason = should_send_handled_failure_alert(state, failure_type, now)
+
+    if DRY_RUN:
+        summary["emails"]["operations_alert_skipped_reason"] = "DRY_RUN enabled"
+        summary["operations"]["alert_suppressed"] = True
+        print("DRY_RUN enabled; operational alert email not sent.")
+        if state is not None:
+            record_handled_failure_state(state, failure_type, now, alert_sent=False)
+        return
+
+    if not should_send:
+        summary["emails"]["operations_alert_skipped_reason"] = skip_reason
+        summary["operations"]["alert_suppressed"] = True
+        print(f"Operational alert suppressed: {skip_reason}.")
+        if state is not None:
+            record_handled_failure_state(state, failure_type, now, alert_sent=False)
+        return
+
     if not OPERATIONS_EMAIL:
         summary["emails"]["operations_alert_skipped_reason"] = "OPERATIONS_EMAIL not configured"
         print("OPERATIONS_EMAIL not configured; operational alert not sent.")
+        if state is not None:
+            record_handled_failure_state(state, failure_type, now, alert_sent=False)
         return
 
     alert = build_operations_alert(summary, failure_reason)
@@ -226,13 +359,38 @@ def send_operations_alert(summary, failure_reason):
         email_to=OPERATIONS_EMAIL,
         subject=OPERATIONS_ALERT_SUBJECT,
     )
-    if DRY_RUN:
-        summary["emails"]["operations_alert_skipped_reason"] = "DRY_RUN enabled"
-        print("DRY_RUN enabled; operational alert email not sent.")
+    summary["emails"]["operations_alert_sent"] = True
+    if state is not None:
+        record_handled_failure_state(state, failure_type, now, alert_sent=True)
+    print("Operational alert email sent.")
+
+
+def send_operations_recovery_if_needed(summary, state):
+    previous_failure = clear_handled_failure_state(state, datetime.now(timezone.utc))
+    if previous_failure is None:
         return
 
-    summary["emails"]["operations_alert_sent"] = True
-    print("Operational alert email sent.")
+    summary["operations"]["recovery_sent"] = True
+
+    if DRY_RUN:
+        summary["emails"]["operations_recovery_skipped_reason"] = "DRY_RUN enabled"
+        print("DRY_RUN enabled; operational recovery email not sent.")
+        return
+
+    if not OPERATIONS_EMAIL:
+        summary["emails"]["operations_recovery_skipped_reason"] = "OPERATIONS_EMAIL not configured"
+        print("OPERATIONS_EMAIL not configured; operational recovery email not sent.")
+        return
+
+    recovery = build_operations_recovery(summary, previous_failure)
+    send_email(
+        recovery,
+        dry_run=False,
+        email_to=OPERATIONS_EMAIL,
+        subject=OPERATIONS_RECOVERY_SUBJECT,
+    )
+    summary["emails"]["operations_recovery_sent"] = True
+    print("Operational recovery email sent.")
 
 
 def write_failure_artifact(message):
@@ -608,6 +766,7 @@ def run_monitor(
 def run(mode=DAILY_MODE):
     run_started = time.perf_counter()
     summary = new_run_summary(mode)
+    state = None
     if SCRAPER_BACKEND not in SCRAPER_BACKENDS:
         failure_reason = f"Unsupported SCRAPER_BACKEND: {SCRAPER_BACKEND}"
         finish_run_summary(summary, run_started, "FAILED", failure_reason)
@@ -725,6 +884,9 @@ def run(mode=DAILY_MODE):
                     summary=summary,
                 )
             finish_run_summary(summary, run_started, "SUCCESS")
+            send_operations_recovery_if_needed(summary, state)
+            if not DRY_RUN:
+                save_state(state, STATE_PATH)
             write_run_summary(summary)
             return
 
@@ -756,6 +918,9 @@ def run(mode=DAILY_MODE):
                 browser.close()
 
         finish_run_summary(summary, run_started, "SUCCESS")
+        send_operations_recovery_if_needed(summary, state)
+        if not DRY_RUN:
+            save_state(state, STATE_PATH)
         write_run_summary(summary)
     except DirectScraperRuntimeError as exc:
         failure_reason = f"{type(exc).__name__}: {exc}"
@@ -763,7 +928,9 @@ def run(mode=DAILY_MODE):
             summary["state"]["skipped_reason"] = "run failed"
         finish_run_summary(summary, run_started, "HANDLED_FAILURE", failure_reason)
         try:
-            send_operations_alert(summary, failure_reason)
+            send_operations_alert(summary, failure_reason, state=state)
+            if state is not None and not DRY_RUN:
+                save_state(state, STATE_PATH)
         except Exception as alert_exc:
             summary["emails"]["operations_alert_skipped_reason"] = (
                 f"operational alert failed: {type(alert_exc).__name__}: {alert_exc}"

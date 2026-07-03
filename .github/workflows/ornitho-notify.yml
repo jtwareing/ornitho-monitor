@@ -67,6 +67,7 @@ jobs:
           DIRECT_SETUP_ATTEMPTS: "2"
           DIRECT_RETRY_BACKOFF_SECONDS: "5"
           DIRECT_TOTAL_TIMEOUT_SECONDS: "240"
+          OPERATIONS_ALERT_THROTTLE_HOURS: ${{ vars.OPERATIONS_ALERT_THROTTLE_HOURS || '6' }}
         run: |
           echo "dry_run=${DRY_RUN}"
           echo "scraper_backend=${SCRAPER_BACKEND}"
@@ -75,6 +76,7 @@ jobs:
           echo "direct_setup_attempts=${DIRECT_SETUP_ATTEMPTS}"
           echo "direct_retry_backoff_seconds=${DIRECT_RETRY_BACKOFF_SECONDS}"
           echo "direct_total_timeout_seconds=${DIRECT_TOTAL_TIMEOUT_SECONDS}"
+          echo "operations_alert_throttle_hours=${OPERATIONS_ALERT_THROTTLE_HOURS}"
           echo "Python command: python -m ornitho.main --mode notify"
           python - <<'PY'
           import os

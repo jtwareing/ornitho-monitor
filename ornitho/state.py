@@ -15,6 +15,7 @@ def empty_state():
     return {
         "schema_version": SCHEMA_VERSION,
         "monitors": {},
+        "operations": {},
     }
 
 
@@ -61,6 +62,35 @@ def validate_state(state):
     monitors = state.setdefault("monitors", {})
     if not isinstance(monitors, dict):
         raise RuntimeError("State monitors must be an object")
+
+    operations = state.setdefault("operations", {})
+    if not isinstance(operations, dict):
+        raise RuntimeError("State operations must be an object")
+
+    handled_failure = operations.get("handled_failure")
+    if handled_failure is not None:
+        if not isinstance(handled_failure, dict):
+            raise RuntimeError("State operations.handled_failure must be an object")
+        for key in ("active",):
+            if key in handled_failure and not isinstance(handled_failure[key], bool):
+                raise RuntimeError(f"State operations.handled_failure.{key} must be true or false")
+        for key in (
+            "failure_type",
+            "first_seen",
+            "last_seen",
+            "last_alert_sent",
+            "last_recovery_sent",
+        ):
+            if key in handled_failure and handled_failure[key] is not None and not isinstance(
+                handled_failure[key],
+                str,
+            ):
+                raise RuntimeError(f"State operations.handled_failure.{key} must be a string or null")
+        if "suppressed_count" in handled_failure and not isinstance(
+            handled_failure["suppressed_count"],
+            int,
+        ):
+            raise RuntimeError("State operations.handled_failure.suppressed_count must be an integer")
 
     for monitor_name, monitor_state in monitors.items():
         if not isinstance(monitor_state, dict):

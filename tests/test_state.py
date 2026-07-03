@@ -110,6 +110,39 @@ class StateTests(unittest.TestCase):
 
         self.assertEqual(normalized["monitors"]["default"]["targets"]["HB-HB"]["seen_record_keys"], ["a", "b"])
 
+    def test_validate_state_accepts_operations_alert_state(self):
+        state = {
+            "schema_version": 1,
+            "monitors": {},
+            "operations": {
+                "handled_failure": {
+                    "active": True,
+                    "failure_type": "DirectScraperRuntimeError:TimeoutError",
+                    "first_seen": "2026-07-03T00:00:00+00:00",
+                    "last_seen": "2026-07-03T01:00:00+00:00",
+                    "last_alert_sent": "2026-07-03T00:00:00+00:00",
+                    "last_recovery_sent": None,
+                    "suppressed_count": 1,
+                }
+            },
+        }
+
+        self.assertEqual(validate_state(state), state)
+
+    def test_validate_state_rejects_invalid_operations_alert_state(self):
+        with self.assertRaisesRegex(RuntimeError, "suppressed_count"):
+            validate_state(
+                {
+                    "schema_version": 1,
+                    "monitors": {},
+                    "operations": {
+                        "handled_failure": {
+                            "suppressed_count": "many",
+                        }
+                    },
+                }
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

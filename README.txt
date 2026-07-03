@@ -222,6 +222,14 @@ Operations alerts are infrastructure alerts, not bird notifications.
 
 Set GitHub secret OPERATIONS_EMAIL to enable them.
 
+Handled-failure alerts are throttled. The first HANDLED_FAILURE sends an
+operations alert. Repeated failures of the same type are suppressed for the
+configured window, default 6 hours. Every run still uploads run_summary.json and
+scrape_failure.txt.
+
+When scraping recovers after handled failures, the monitor sends one recovery
+email and clears the active handled-failure alert state.
+
 If OPERATIONS_EMAIL is unset:
 - no operational alert is sent
 - the run summary records that the alert was skipped
@@ -269,6 +277,8 @@ GitHub repository variables:
 - SCRAPER_BACKEND: optional manual daily diagnostic override; defaults to
   playwright
 - ORNITHO_MONITORING_DISABLED: optional global shutdown flag
+- OPERATIONS_ALERT_THROTTLE_HOURS: optional operations alert throttle window;
+  defaults to 6
 
 Current note:
 - ORNITHO_CATEGORIES is not a production control in v1.0. Categories are
@@ -372,13 +382,15 @@ Interpret run_summary.json:
 - actual_scrape_queries_executed: completed scrape count
 - records_per_monitor: per-monitor record counts where available
 - emails: user and operations email decisions
+- operations: alert throttle and recovery decisions
 - state: whether state was saved or skipped
 
 Interpret HANDLED_FAILURE:
 - this is usually an Ornitho/direct HTTP availability problem
 - no user bird email was sent
 - state was not saved
-- operational alert should be sent if OPERATIONS_EMAIL is configured
+- operational alert is sent if OPERATIONS_EMAIL is configured and the throttle
+  window allows it
 - GitHub job success is expected
 
 Recover from repeated scraper failures:
@@ -439,6 +451,8 @@ No bird email arrived:
 No operational alert arrived:
 - check OPERATIONS_EMAIL configured log line
 - inspect run_summary.json emails.operations_alert_sent
+- inspect run_summary.json emails.operations_alert_skipped_reason for throttle
+  suppression
 - confirm the failure was a handled or unexpected failure requiring an alert
 
 Duplicate notification arrived:

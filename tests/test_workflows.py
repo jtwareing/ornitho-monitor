@@ -64,6 +64,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('DIRECT_SETUP_ATTEMPTS: "2"', hourly)
         self.assertIn('DIRECT_RETRY_BACKOFF_SECONDS: "5"', hourly)
         self.assertIn('DIRECT_TOTAL_TIMEOUT_SECONDS: "240"', hourly)
+        self.assertIn("OPERATIONS_ALERT_THROTTLE_HOURS: ${{ vars.OPERATIONS_ALERT_THROTTLE_HOURS || '6' }}", hourly)
+        self.assertIn('echo "operations_alert_throttle_hours=${OPERATIONS_ALERT_THROTTLE_HOURS}"', hourly)
         self.assertIn("timeout-minutes: 8", hourly)
         self.assertNotIn("python -m playwright install", hourly)
         self.assertIn("python -m ornitho.main --mode notify", hourly)

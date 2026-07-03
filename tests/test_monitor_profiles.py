@@ -6,7 +6,7 @@ import sys
 import tempfile
 import types
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 
 def install_dependency_stubs():
@@ -739,6 +739,7 @@ class MonitorProfileTests(unittest.TestCase):
 
                 summary = json.loads(Path(tmpdir, "run_summary.json").read_text(encoding="utf-8"))
                 failure = Path(tmpdir, "scrape_failure.txt").read_text(encoding="utf-8")
+                saved_state = json.loads(Path(tmpdir, "state.json").read_text(encoding="utf-8"))
             finally:
                 main.OUT = original_out
                 main.STATE_PATH = original_state_path
@@ -767,7 +768,146 @@ class MonitorProfileTests(unittest.TestCase):
         self.assertTrue(summary["emails"]["operations_alert_sent"])
         self.assertFalse(summary["state"]["saved"])
         self.assertEqual(summary["state"]["skipped_reason"], "run failed")
-        self.assertFalse(Path(tmpdir, "state.json").exists())
+        self.assertEqual(saved_state["monitors"], {})
+        self.assertTrue(saved_state["operations"]["handled_failure"]["active"])
+        self.assertEqual(
+            saved_state["operations"]["handled_failure"]["failure_type"],
+            "DirectScraperRuntimeError:TimeoutError",
+        )
+
+    def test_operations_alert_throttles_repeated_handled_failure(self):
+        install_dependency_stubs()
+        import ornitho.main as main
+
+        sent = []
+
+        def fake_send_email(report, dry_run=False, email_to=None, subject=None):
+            sent.append((report, dry_run, email_to, subject))
+
+        state = {"schema_version": 1, "monitors": {}}
+
+        original_dry_run = main.DRY_RUN
+        original_operations_email = main.OPERATIONS_EMAIL
+        original_send = main.send_email
+        original_throttle = main.OPERATIONS_ALERT_THROTTLE_HOURS
+        try:
+            main.DRY_RUN = False
+            main.OPERATIONS_EMAIL = "ops@example.test"
+            main.send_email = fake_send_email
+            main.OPERATIONS_ALERT_THROTTLE_HOURS = 6
+
+            first_summary = main.new_run_summary(main.NOTIFY_MODE)
+            main.finish_run_summary(first_summary, 0, "HANDLED_FAILURE", "DirectScraperRuntimeError: TimeoutError: slow")
+            main.send_operations_alert(first_summary, first_summary["failure_reason"], state=state)
+
+            second_summary = main.new_run_summary(main.NOTIFY_MODE)
+            main.finish_run_summary(second_summary, 0, "HANDLED_FAILURE", "DirectScraperRuntimeError: TimeoutError: slow")
+            main.send_operations_alert(second_summary, second_summary["failure_reason"], state=state)
+        finally:
+            main.DRY_RUN = original_dry_run
+            main.OPERATIONS_EMAIL = original_operations_email
+            main.send_email = original_send
+            main.OPERATIONS_ALERT_THROTTLE_HOURS = original_throttle
+
+        self.assertEqual(len(sent), 1)
+        self.assertTrue(first_summary["emails"]["operations_alert_sent"])
+        self.assertFalse(second_summary["emails"]["operations_alert_sent"])
+        self.assertTrue(second_summary["operations"]["alert_suppressed"])
+        self.assertIn("throttle window", second_summary["emails"]["operations_alert_skipped_reason"])
+        self.assertEqual(state["operations"]["handled_failure"]["suppressed_count"], 1)
+
+    def test_operations_alert_sends_again_after_throttle_window(self):
+        install_dependency_stubs()
+        import ornitho.main as main
+
+        sent = []
+        last_alert = datetime.now(timezone.utc) - timedelta(hours=7)
+        state = {
+            "schema_version": 1,
+            "monitors": {},
+            "operations": {
+                "handled_failure": {
+                    "active": True,
+                    "failure_type": "DirectScraperRuntimeError:TimeoutError",
+                    "first_seen": (last_alert - timedelta(hours=1)).isoformat(),
+                    "last_seen": last_alert.isoformat(),
+                    "last_alert_sent": last_alert.isoformat(),
+                    "last_recovery_sent": None,
+                    "suppressed_count": 3,
+                }
+            },
+        }
+
+        def fake_send_email(report, dry_run=False, email_to=None, subject=None):
+            sent.append((report, dry_run, email_to, subject))
+
+        original_dry_run = main.DRY_RUN
+        original_operations_email = main.OPERATIONS_EMAIL
+        original_send = main.send_email
+        original_throttle = main.OPERATIONS_ALERT_THROTTLE_HOURS
+        try:
+            main.DRY_RUN = False
+            main.OPERATIONS_EMAIL = "ops@example.test"
+            main.send_email = fake_send_email
+            main.OPERATIONS_ALERT_THROTTLE_HOURS = 6
+
+            summary = main.new_run_summary(main.NOTIFY_MODE)
+            main.finish_run_summary(summary, 0, "HANDLED_FAILURE", "DirectScraperRuntimeError: TimeoutError: slow")
+            main.send_operations_alert(summary, summary["failure_reason"], state=state)
+        finally:
+            main.DRY_RUN = original_dry_run
+            main.OPERATIONS_EMAIL = original_operations_email
+            main.send_email = original_send
+            main.OPERATIONS_ALERT_THROTTLE_HOURS = original_throttle
+
+        self.assertEqual(len(sent), 1)
+        self.assertTrue(summary["emails"]["operations_alert_sent"])
+        self.assertEqual(state["operations"]["handled_failure"]["suppressed_count"], 0)
+
+    def test_operations_recovery_email_clears_active_handled_failure(self):
+        install_dependency_stubs()
+        import ornitho.main as main
+
+        sent = []
+        state = {
+            "schema_version": 1,
+            "monitors": {},
+            "operations": {
+                "handled_failure": {
+                    "active": True,
+                    "failure_type": "DirectScraperRuntimeError:TimeoutError",
+                    "first_seen": "2026-07-03T00:00:00+00:00",
+                    "last_seen": "2026-07-03T02:00:00+00:00",
+                    "last_alert_sent": "2026-07-03T00:00:00+00:00",
+                    "last_recovery_sent": None,
+                    "suppressed_count": 2,
+                }
+            },
+        }
+
+        def fake_send_email(report, dry_run=False, email_to=None, subject=None):
+            sent.append((report, dry_run, email_to, subject))
+
+        original_dry_run = main.DRY_RUN
+        original_operations_email = main.OPERATIONS_EMAIL
+        original_send = main.send_email
+        try:
+            main.DRY_RUN = False
+            main.OPERATIONS_EMAIL = "ops@example.test"
+            main.send_email = fake_send_email
+
+            summary = main.new_run_summary(main.NOTIFY_MODE)
+            main.finish_run_summary(summary, 0, "SUCCESS")
+            main.send_operations_recovery_if_needed(summary, state)
+        finally:
+            main.DRY_RUN = original_dry_run
+            main.OPERATIONS_EMAIL = original_operations_email
+            main.send_email = original_send
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0][3], main.OPERATIONS_RECOVERY_SUBJECT)
+        self.assertTrue(summary["emails"]["operations_recovery_sent"])
+        self.assertFalse(state["operations"]["handled_failure"]["active"])
 
     def test_paused_monitor_is_skipped_before_scraping_or_email(self):
         install_dependency_stubs()
