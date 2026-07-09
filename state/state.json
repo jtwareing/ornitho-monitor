@@ -51,7 +51,9 @@
           ]
         },
         "NI-OL*": {
-          "seen_record_keys": []
+          "seen_record_keys": [
+            "40b2179539cb399faa70866c9911d95fbd633856dce184cc9e8d686b3ec8fe52"
+          ]
         },
         "NI-VER": {
           "seen_record_keys": []
