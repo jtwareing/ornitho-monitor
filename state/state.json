@@ -63,11 +63,11 @@
   },
   "operations": {
     "handled_failure": {
-      "active": true,
+      "active": false,
       "failure_type": "DirectScraperRuntimeError:TimeoutError",
       "first_seen": "2026-07-10T09:24:24.655883+00:00",
       "last_alert_sent": "2026-07-10T09:24:24.655883+00:00",
-      "last_recovery_sent": null,
+      "last_recovery_sent": "2026-07-10T10:23:45.191183+00:00",
       "last_seen": "2026-07-10T09:24:24.655883+00:00",
       "suppressed_count": 0
     }
