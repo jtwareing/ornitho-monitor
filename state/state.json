@@ -63,12 +63,12 @@
   },
   "operations": {
     "handled_failure": {
-      "active": false,
+      "active": true,
       "failure_type": "DirectScraperRuntimeError:TimeoutError",
-      "first_seen": "2026-07-06T06:24:13.041096+00:00",
-      "last_alert_sent": "2026-07-06T06:24:13.041096+00:00",
-      "last_recovery_sent": "2026-07-06T07:23:44.934639+00:00",
-      "last_seen": "2026-07-06T06:24:13.041096+00:00",
+      "first_seen": "2026-07-10T09:24:24.655883+00:00",
+      "last_alert_sent": "2026-07-10T09:24:24.655883+00:00",
+      "last_recovery_sent": null,
+      "last_seen": "2026-07-10T09:24:24.655883+00:00",
       "suppressed_count": 0
     }
   },
