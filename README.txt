@@ -98,6 +98,12 @@ production targets:
 - NI-OL*
 - NI-DH
 - HB-HB
+- NW-BO
+- NW-WES
+- NW-COE
+- NW-RE
+- NW-KLE
+- NW-ST
 
 Simon is configured as a separate monitor with independent targets, recipient,
 reports, and notification state.
