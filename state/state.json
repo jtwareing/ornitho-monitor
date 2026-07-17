@@ -68,7 +68,9 @@
           "seen_record_keys": []
         },
         "NW-KLE": {
-          "seen_record_keys": []
+          "seen_record_keys": [
+            "94e34499c6e5173c516bddff38acb763fa28fa51351bd563135263be2f47719c"
+          ]
         },
         "NW-RE": {
           "seen_record_keys": []
