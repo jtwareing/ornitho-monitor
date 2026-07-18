@@ -74,7 +74,9 @@
           ]
         },
         "NW-RE": {
-          "seen_record_keys": []
+          "seen_record_keys": [
+            "5e5f3a411704f44a75278e54ec28def2bf795901e7a584d652898fd858ea1141"
+          ]
         },
         "NW-ST": {
           "seen_record_keys": [
