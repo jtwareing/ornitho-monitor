@@ -3,7 +3,9 @@
     "Simon": {
       "targets": {
         "BE-B": {
-          "seen_record_keys": []
+          "seen_record_keys": [
+            "2b02a4ab5ea5fe869ebbcaf8824ecbb5de8bbf4bca952e4f7a8004986c5f1feb"
+          ]
         },
         "NI-AUR": {
           "seen_record_keys": [
