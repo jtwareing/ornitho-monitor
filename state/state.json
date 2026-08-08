@@ -100,7 +100,9 @@
           "seen_record_keys": []
         },
         "NW-BO": {
-          "seen_record_keys": []
+          "seen_record_keys": [
+            "c2112743d79e38bd25e3c0c24a98e379f6439ab33f1b2c1c833f9b2cd6079a85"
+          ]
         },
         "NW-COE": {
           "seen_record_keys": []
