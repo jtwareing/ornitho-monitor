@@ -120,7 +120,9 @@
           ]
         },
         "NI-VER": {
-          "seen_record_keys": []
+          "seen_record_keys": [
+            "e141038c77563cb5879e7985af4a8080e44479f7623e86f1bfd951dbf182f685"
+          ]
         },
         "NW-BO": {
           "seen_record_keys": [
