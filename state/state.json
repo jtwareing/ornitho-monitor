@@ -190,7 +190,9 @@
           ]
         },
         "NW-COE": {
-          "seen_record_keys": []
+          "seen_record_keys": [
+            "4153ab1178ee8aff4f3f548ae159b74337b1bd2f40b82b14daee7d3abdf7b207"
+          ]
         },
         "NW-KLE": {
           "seen_record_keys": [
