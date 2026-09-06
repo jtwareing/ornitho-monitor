@@ -353,12 +353,12 @@
   },
   "operations": {
     "handled_failure": {
-      "active": false,
+      "active": true,
       "failure_type": "DirectScraperRuntimeError",
-      "first_seen": "2026-08-29T20:24:17.237958+00:00",
-      "last_alert_sent": "2026-08-29T20:24:17.237958+00:00",
-      "last_recovery_sent": "2026-08-29T21:24:24.617533+00:00",
-      "last_seen": "2026-08-29T20:24:17.237958+00:00",
+      "first_seen": "2026-09-06T13:24:08.122945+00:00",
+      "last_alert_sent": "2026-09-06T13:24:08.122945+00:00",
+      "last_recovery_sent": null,
+      "last_seen": "2026-09-06T13:24:08.122945+00:00",
       "suppressed_count": 0
     }
   },
