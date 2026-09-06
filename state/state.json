@@ -16,7 +16,8 @@
             "bdb169aed6bad51702b1de9dec6c78cc20d27adc2661ceead19676c4b655fdc8",
             "d410571bf71fa0925c49c31840a98b86cf0fade839b9d24882ea94bb70253760",
             "de4eea416e3d8bcf8202a8a1c95640c773198567508959dbe76f9a575a31acb4",
-            "f7323a41fee77ce8bf130d2277135514d9e90b0caf8de7a170dcd8c18abd8a58"
+            "f7323a41fee77ce8bf130d2277135514d9e90b0caf8de7a170dcd8c18abd8a58",
+            "f8a727e4f5e9c7f18fed68b73f08271b9af987c75e54b1314ceb76e1965595a7"
           ]
         },
         "NI-AUR": {
@@ -80,6 +81,7 @@
             "b0569873f2412f703ac1bc7cbc69933cec9fc0f973d2d205a31d6fef475a1056",
             "b0c7777e5a812e3618d0ac73282a5cfeca12613b6ddf4ca806cbdb5bf6608c14",
             "b4b849b385d047a5419fa1c84aa6c21b3ff05f8c2df7556f4009ea8fbc68e1b1",
+            "b6ab0411eacf0021c21d9d70bc0b7c6be80d5cf92f2eb704777e5c025bf8c246",
             "b7038c103bac6a75f93b59b4c72bf30d388a23e65697127e5eb1b90bab823ecc",
             "b929a1e994f8d8cd571f2b850fb036743870589be079b6a15b4e4c2c873ee1f9",
             "bbe07d489532c78bfa29cd5498e0218a3883406b43696f82931479fc510ab0e2",
@@ -190,6 +192,7 @@
             "4393a298d18c3be414b69c5c8fbefe2e0337510ca1681962c46246d60a551ee2",
             "4b3aafae6f1e2f21cc620167880cf09ef26359148d9f36d497104e3ea52d57f7",
             "6098ed5cfa6184886c226b58f0506ab11aa198780ea9c0ca5a53d1182bfb2a2c",
+            "6252d98b4b2811861f650d3b030bcbaab185bc8633847f4de24dad33dcf3eb7d",
             "720816803c1632d6d506e918bc50afda13e3b118cf4657f2f87cea9dbec1845b",
             "74fd77ce6babbc0035fe163f924efaa95cf1561136a5309030bf6bc65e4502fd",
             "774eb3c1317c55d63657573e853f08861b5d552ddc07a2a840588845c496fda5",
@@ -254,6 +257,7 @@
             "178928c76ec61dbb8c413c12007b4951be880754743cf298acbe719dc2e86ba1",
             "5796386267b97a5087527166025a356c3642d30d497aa62f221ecd3177149db6",
             "80aa6a76a4ac8a18073c17b866b9847742f983ec294bf3b0a05c25590f89e003",
+            "90ed0246e6a255adca04334d9f2c3658145c2081a12b01e0b786a9eec8bd9192",
             "c82be9782c7e8e4e5bff3483fedb25e574ed8b85edb394dcf81996a13d52758b",
             "e141038c77563cb5879e7985af4a8080e44479f7623e86f1bfd951dbf182f685"
           ]
@@ -353,11 +357,11 @@
   },
   "operations": {
     "handled_failure": {
-      "active": true,
+      "active": false,
       "failure_type": "DirectScraperRuntimeError",
       "first_seen": "2026-09-06T13:24:08.122945+00:00",
       "last_alert_sent": "2026-09-06T13:24:08.122945+00:00",
-      "last_recovery_sent": null,
+      "last_recovery_sent": "2026-09-06T14:24:11.053185+00:00",
       "last_seen": "2026-09-06T13:24:08.122945+00:00",
       "suppressed_count": 0
     }
