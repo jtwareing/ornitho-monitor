@@ -180,6 +180,7 @@
             "53e5bb8dffb71d121b90526b4b10370282b44342a5651ab2df1b7056fcad5164",
             "54c2d3b68647b10281817c172cd4209003b9975923e7e4b979413c3e1df03185",
             "564e2016f4ba604c3f8f8dbfa976f75a80852c28cea2dfae3d1332254f3711f8",
+            "69fca75e54942f7a7169af4270f3e39569dc7f95c152f9367230e2b684464173",
             "8102ca05e17c19e76abda76021914be534c8290ee1dad85d5bb56596ad97b3fb",
             "8d06e02e5894766beb2e37e8a0b9736b881e5d7acb435a4f32ee3e4d5e7861a5",
             "98402ecf139c42064ca366dfef84f2b31225c8ab7b17624b0b660988fb1bfabc",
@@ -378,11 +379,11 @@
   },
   "operations": {
     "handled_failure": {
-      "active": true,
+      "active": false,
       "failure_type": "DirectScraperRuntimeError:TimeoutError",
       "first_seen": "2026-09-10T07:24:49.776995+00:00",
       "last_alert_sent": "2026-09-10T07:24:49.776995+00:00",
-      "last_recovery_sent": null,
+      "last_recovery_sent": "2026-09-10T09:24:03.758256+00:00",
       "last_seen": "2026-09-10T08:24:32.227029+00:00",
       "suppressed_count": 1
     }
