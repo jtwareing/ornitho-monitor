@@ -31,7 +31,7 @@
     },
     {
       "name": "Simon",
-      "enabled": true,
+      "enabled": false,
       "email_to": "sim.kiese@gmail.com",
       "categories": {
         "daily": [

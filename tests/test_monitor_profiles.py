@@ -46,7 +46,7 @@ class MonitorProfileTests(unittest.TestCase):
         self.assertEqual(config.MONITORS[0].categories["daily"], ("rare",))
         self.assertEqual(config.MONITORS[0].categories["notify"], ("rare", "veryrare"))
         self.assertEqual(config.MONITORS[1].name, "Simon")
-        self.assertTrue(config.MONITORS[1].enabled)
+        self.assertFalse(config.MONITORS[1].enabled)
         self.assertEqual(config.MONITORS[1].email_to, "sim.kiese@gmail.com")
         self.assertEqual(
             config.MONITORS[1].targets,
