@@ -278,6 +278,7 @@
             "b7f91938062196532c55807bce940464b117d7dfa6cee5cd5d8b3050c5b5faee",
             "b8163261150fdfd7db3a1926b89b4d1564ae418337a17edd310c8a97355d9df9",
             "bace5e842f11b2927c08062b20615e14c6e7bc0149b4b0d82aab4086d9a59401",
+            "be73fe08e09b34c065e7b396d320ed7a03505c2771672fcc0ae2207caa6fd9ea",
             "bea436d554af91f5e5b4ce5a0ed81ca281731e8d02e5ae19cdc218b9ee92467d",
             "c78b7c96ee6ffaae84532ab94435bf6175c5c8c033f4ade76db9fa1646594929",
             "cd57bedfdc45c059d7518a53bb49e36998bb80eb438570de21c674f034e6d90b",
@@ -315,6 +316,7 @@
             "5d4ef24d2b591bda9ef0fa229e4b3556c429c909094b2dae2af5c28e1501b101",
             "61d5dc0bbcb6ba9c21e9cc10f96d54d368fdd77d62f27f6c30c447cf2da2bef2",
             "6478b3c53014a32c7ac65bd1a154617f45d3286de6c6ec1d836472d0ea598cf6",
+            "685cdf76bd539b42b5a6445e1ab86138a31b934030903f4fa8cbc352699e5600",
             "717c8edaa4aa07a5079a64a75329077b211529323babddd21652f82d0357385e",
             "7c408062add46f497c24ece5d8d6b84f304d76ed097a56dd7c5c0df1d9b4f138",
             "95f24fd3cf9685c01b30045842c5a788676cb6be01f1f61af5b32cd9efdd90ce",
@@ -362,6 +364,7 @@
             "487eb085984af36a69713c1bfcbc63652da48f65c06f291318e3cef94f8382cb",
             "4a443c650bc2d526f5b48e6fb240d26f402c9d2600930c4c642cbf9134cd98ef",
             "4b0d552e09cdbcdb06022c8f69a917eb89e081e29a1486a2a0c3f5d542159c46",
+            "545a84cb1c4bdd44e59b478dff658e76cb23a6f8f7652013a36ce1166ec89cf6",
             "6776251e4ffc020cc9af0bae8ec5971f79ade04ada1874400c2eabfd96465d99",
             "763b1a1cbe3fdf0f4aefed12b9a48015067af75b9dc4c5311fa4d2dbdd18f8e0",
             "7f4cdcab1fc3f4ae7423d12cc8dd2a356d94d7e125c5a12a8d98753e0ac084f2",
@@ -556,11 +559,11 @@
   },
   "operations": {
     "handled_failure": {
-      "active": true,
+      "active": false,
       "failure_type": "DirectScraperRuntimeError",
       "first_seen": "2026-11-04T06:23:37.853303+00:00",
       "last_alert_sent": "2026-11-04T13:23:39.866003+00:00",
-      "last_recovery_sent": null,
+      "last_recovery_sent": "2026-11-04T18:23:47.695727+00:00",
       "last_seen": "2026-11-04T17:23:33.933806+00:00",
       "suppressed_count": 4
     }
