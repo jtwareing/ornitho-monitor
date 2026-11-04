@@ -556,11 +556,11 @@
   },
   "operations": {
     "handled_failure": {
-      "active": true,
+      "active": false,
       "failure_type": "DirectScraperRuntimeError",
       "first_seen": "2026-11-04T03:23:49.056513+00:00",
       "last_alert_sent": "2026-11-04T03:23:49.056513+00:00",
-      "last_recovery_sent": null,
+      "last_recovery_sent": "2026-11-04T05:23:40.084440+00:00",
       "last_seen": "2026-11-04T04:23:38.716127+00:00",
       "suppressed_count": 1
     }
