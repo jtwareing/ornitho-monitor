@@ -297,6 +297,7 @@
             "e604a438ed368b4cf654ddeba4297a20fdb6afc9db0ad1fd4cd00474c958e12d",
             "e7bfe9f1fe528305b1dbcafd59ab0c533e360aa837fb2f03d98528a855244e4e",
             "eed813eb24567d0c26cfc70dcae980f1e67debb96d92f15320d8c5247b39a148",
+            "f190c0382a53f1587983d5054b301908699e5ea99af8166cb8e6fc25c2aaa148",
             "f1e8b0c7950245271967f903514e215ab16edf91ee938175536e15a6a8d1c48e",
             "f3218887ad0acd80586d2dca9d7c00b8158bbfb1cf569aab1ac89779c179359e",
             "f893a87439ac1b7ceb0b3f99779d254df40db6a65b11cb5c80847fb13139bf60",
@@ -343,6 +344,7 @@
             "4dda2dd03200ae3fefb06bbdba7c4216468e231fcd7ff6c9dcad2f1bf0b87d2a",
             "59429994ffceb80c3818e5585c9db5d0b0246904f68741c08c079520eb4fc7d3",
             "5da150d591bb7beb9ff0df633cbb23f914ed670448eabf989a5a8249dc85b97b",
+            "7157038c373fc90f1b950909975897ad05371386c81e62fe6f5fb6ceb8ecc35f",
             "73bb716552f07ef8203dea37ad294b40677f0c756ed0365419392367256fe49c",
             "8123acb55ccaed7847a61ea70f901c6c713df081e218f9a79e4b0e962700623a",
             "9df4b443b14f3ffb7bf566e4919d9d82d469b2dd380d85429860841f63943c3f",
@@ -560,11 +562,11 @@
   },
   "operations": {
     "handled_failure": {
-      "active": true,
+      "active": false,
       "failure_type": "DirectScraperRuntimeError",
       "first_seen": "2026-11-05T14:23:32.232147+00:00",
       "last_alert_sent": "2026-11-08T08:23:35.219593+00:00",
-      "last_recovery_sent": null,
+      "last_recovery_sent": "2026-11-08T11:23:42.057444+00:00",
       "last_seen": "2026-11-08T10:23:34.544952+00:00",
       "suppressed_count": 2
     }
