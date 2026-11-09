@@ -565,10 +565,10 @@
       "active": true,
       "failure_type": "DirectScraperRuntimeError",
       "first_seen": "2026-11-08T12:23:35.599182+00:00",
-      "last_alert_sent": "2026-11-09T07:23:33.212326+00:00",
+      "last_alert_sent": "2026-11-09T13:23:37.178381+00:00",
       "last_recovery_sent": null,
-      "last_seen": "2026-11-09T12:23:38.746142+00:00",
-      "suppressed_count": 5
+      "last_seen": "2026-11-09T13:23:37.178381+00:00",
+      "suppressed_count": 0
     }
   },
   "schema_version": 1
