@@ -567,8 +567,8 @@
       "first_seen": "2026-11-08T12:23:35.599182+00:00",
       "last_alert_sent": "2026-11-12T15:24:24.540071+00:00",
       "last_recovery_sent": null,
-      "last_seen": "2026-11-12T16:24:18.597632+00:00",
-      "suppressed_count": 1
+      "last_seen": "2026-11-12T17:24:18.413008+00:00",
+      "suppressed_count": 2
     }
   },
   "schema_version": 1
