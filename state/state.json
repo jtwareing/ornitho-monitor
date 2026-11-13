@@ -184,6 +184,7 @@
       "targets": {
         "HB-HB": {
           "seen_record_keys": [
+            "03f94cd0fb0e3e836655effad29032ac0c49d8cce169cecf929a44027a109e3b",
             "0504efb9c068d2eaf7ae5e8f6352be7e65a52b4a640431857f83107b733b19ce",
             "0b06efb775b790cfd94636b0eea3aaccca3f9023cebf1ea311ac261dc04a2835",
             "0b302bb86448a15579cce70fc00b4b6cc32111b5b0bcb6b324433802ed8544d2",
@@ -563,11 +564,11 @@
   },
   "operations": {
     "handled_failure": {
-      "active": true,
+      "active": false,
       "failure_type": "DirectScraperRuntimeError",
       "first_seen": "2026-11-13T06:24:17.172705+00:00",
       "last_alert_sent": "2026-11-13T19:24:20.928438+00:00",
-      "last_recovery_sent": null,
+      "last_recovery_sent": "2026-11-13T21:24:33.877880+00:00",
       "last_seen": "2026-11-13T20:24:17.170470+00:00",
       "suppressed_count": 1
     }
