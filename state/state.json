@@ -334,6 +334,7 @@
             "ae29f1b4b2a8fbb2eeb5b44e0b8c3f1e585b2d1c8e182b4a6c4c9f210449cdb8",
             "bb588e9e6d17bed857240d078f519eddac5f58784261187d2cc105d68476b9da",
             "dee264c8897a2c10dd2e39aecc979a2a38a47c7354eba03c8636980edbda3a0e",
+            "df6c74389cd941edce65ff0869bd7ede45ede45e35d00a20bc568f04a21a40e6",
             "f08d96781659365995fa1055db9cb4b37ceb8c43df3970aca45f890fe524a85b",
             "f48de5bf06eff951bae84c5d51fbf3bf9399a280d6bddefde94dc437605bc903",
             "f83a7bd1866c3be4b0a5144dded2dcfc6cd7eade74c7876fd6e802266bf279d6",
@@ -569,11 +570,11 @@
   },
   "operations": {
     "handled_failure": {
-      "active": true,
+      "active": false,
       "failure_type": "DirectScraperRuntimeError",
       "first_seen": "2026-11-15T13:23:40.219990+00:00",
       "last_alert_sent": "2026-11-16T03:23:38.645097+00:00",
-      "last_recovery_sent": null,
+      "last_recovery_sent": "2026-11-16T05:24:10.981832+00:00",
       "last_seen": "2026-11-16T04:23:37.178035+00:00",
       "suppressed_count": 1
     }
