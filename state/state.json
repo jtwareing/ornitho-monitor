@@ -307,6 +307,7 @@
             "f1e8b0c7950245271967f903514e215ab16edf91ee938175536e15a6a8d1c48e",
             "f3218887ad0acd80586d2dca9d7c00b8158bbfb1cf569aab1ac89779c179359e",
             "f893a87439ac1b7ceb0b3f99779d254df40db6a65b11cb5c80847fb13139bf60",
+            "f8961fc5f1ccc58404ddc6371efc2101cc5dd5673ef09a04f1ad8b9339da7734",
             "f9439bca7787cf3d959bfb004361e8197de4d92f2e066e9f4c8b5edb4c93f25b"
           ]
         },
@@ -364,6 +365,7 @@
         },
         "NI-OL*": {
           "seen_record_keys": [
+            "0a40c080c58e9e1a27f6f5bb8120b00952d223e3c0e714e4300f2c24dfda5f30",
             "1107e8ea6ebbdf6423503dff77c53f3802cca1de283399b3a54101bfd10cd8b6",
             "123882e7b5f218ef29ed29940c0b96762b1862feb8ed3fd6cfa387a53532c221",
             "19efeb17b6704f5e71676a397ae69ba1dffe5c74c6bf727099e75893ec7ccc11",
@@ -570,11 +572,11 @@
   },
   "operations": {
     "handled_failure": {
-      "active": true,
+      "active": false,
       "failure_type": "DirectScraperRuntimeError",
       "first_seen": "2026-11-16T11:50:22.254759+00:00",
       "last_alert_sent": "2026-11-16T11:50:22.254759+00:00",
-      "last_recovery_sent": null,
+      "last_recovery_sent": "2026-11-16T15:24:01.871973+00:00",
       "last_seen": "2026-11-16T14:23:58.923612+00:00",
       "suppressed_count": 3
     }
