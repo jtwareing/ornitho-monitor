@@ -59,7 +59,6 @@ jobs:
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-          OPERATIONS_EMAIL: ${{ secrets.OPERATIONS_EMAIL }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'False' }}
           SCRAPER_BACKEND: direct_with_retries
           ORNITHO_MONITORING_DISABLED: ${{ vars.ORNITHO_MONITORING_DISABLED || 'false' }}

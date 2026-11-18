@@ -58,7 +58,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("SCRAPER_BACKEND: direct_with_retries", hourly)
         self.assertIn("ORNITHO_MONITORING_DISABLED: ${{ vars.ORNITHO_MONITORING_DISABLED || 'false' }}", hourly)
         self.assertIn('echo "ornitho_monitoring_disabled=${ORNITHO_MONITORING_DISABLED}"', hourly)
-        self.assertIn("OPERATIONS_EMAIL: ${{ secrets.OPERATIONS_EMAIL }}", hourly)
+        self.assertNotIn("OPERATIONS_EMAIL: ${{ secrets.OPERATIONS_EMAIL }}", hourly)
         self.assertIn("OPERATIONS_EMAIL configured", hourly)
         self.assertIn('DIRECT_HTTP_TIMEOUT_SECONDS: "30"', hourly)
         self.assertIn('DIRECT_SETUP_ATTEMPTS: "2"', hourly)
