@@ -574,13 +574,13 @@
   },
   "operations": {
     "handled_failure": {
-      "active": false,
+      "active": true,
       "failure_type": "DirectScraperRuntimeError",
-      "first_seen": "2026-11-17T23:23:50.300731+00:00",
-      "last_alert_sent": "2026-11-17T23:23:50.300731+00:00",
-      "last_recovery_sent": "2026-11-18T03:23:59.365451+00:00",
-      "last_seen": "2026-11-18T02:23:54.417877+00:00",
-      "suppressed_count": 3
+      "first_seen": "2026-11-18T04:23:53.345034+00:00",
+      "last_alert_sent": "2026-11-18T04:23:53.345034+00:00",
+      "last_recovery_sent": null,
+      "last_seen": "2026-11-18T04:23:53.345034+00:00",
+      "suppressed_count": 0
     }
   },
   "schema_version": 1
