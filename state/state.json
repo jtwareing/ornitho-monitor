@@ -581,11 +581,11 @@
   },
   "operations": {
     "handled_failure": {
-      "active": true,
+      "active": false,
       "failure_type": "DirectScraperRuntimeError",
       "first_seen": "2026-11-23T08:23:18.606174+00:00",
       "last_alert_sent": null,
-      "last_recovery_sent": null,
+      "last_recovery_sent": "2026-11-23T10:23:27.952862+00:00",
       "last_seen": "2026-11-23T09:23:17.934924+00:00",
       "suppressed_count": 2
     }
